@@ -1,0 +1,385 @@
+---
+title: "Reporting Depth"
+author: "Michael Jensen"
+date: "September 2018"
+output: html_notebook
+---
+# Program Description
+
+Determine whether there are Organization, Category, Fund, Program, or Function levels that governments do not use when reporting to Transparency.
+
+**Notes**
+
+The following tables have been replaced by the Transaction_group Table and are no longer used:
+
+* cat_summary
+* category
+* fund
+* fund_summary
+* org_summary
+* organization
+
+# Program
+
+## Packages & Data Connections
+
+```{r, message = FALSE}
+library(magrittr)
+library(odbc)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+# Org, Cat, Fund, Program, & Function Reporting Depth
+## How deep do governments report organization level information?
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE org10 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE org9 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE org8 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE org7 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE org6 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE org5 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE org4 IS NOT NULL))
+```
+
+## How deep to governments report category level information?
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE cat7 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE cat6 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE cat5 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE cat4 IS NOT NULL))
+```
+
+## How deep do governments report fund level information
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE fund4 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE fund3 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE fund2 IS NOT NULL))
+```
+
+## How deep do governments report program level information?
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE program7 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE program6 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE program5 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE program4 IS NOT NULL))
+```
+
+## How deep to governments report function level information?
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE function7 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE function6 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE function5 IS NOT NULL))
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id IN (
+  SELECT entity_id
+  FROM batch
+  WHERE id IN (
+    SELECT batch_id
+    FROM transaction
+    WHERE function4 IS NOT NULL))
+```
+
+# Identify meaningful levels of data:
+
+Several governments report non-meaninful levels of data (e.g., the description is "0"). The following pieces of code help determine how deep governments are reporting meaningful data.
+
+```{r}
+t_transaction_group_table$id <- as.integer(t_transaction_group_table$id)
+
+level_list  <- list(org_level = list(), cat_level = list(), fund_level = list(),
+                    program_level = list(), function_level = list())
+```
+
+```{r}
+level_names <- c("org", "cat", "fund", "program", "function")
+
+for (level in level_names) {
+  level_name  <- level 
+
+  if (level_name == "org") {
+    level_depth <- 10
+  } else if (level_name == "cat" || 
+             level_name == "program" || 
+             level_name == "function") {
+    level_depth <- 7
+  } else if (level_name == "fund") {
+    level_depth <- 4
+  } 
+
+  for (i in 1:level_depth) {
+    entity_transactions_all[ , paste0(level_name, i)] <- 
+      as.integer(entity_transactions_all[ , paste0(level_name, i)])
+    
+    level_list[[paste0(level_name, "_level")]][[i]] <- 
+      entity_transactions_all %>% 
+      select(paste0(level_name, i)) %>% 
+      unique
+    
+    colnames(level_list[[paste0(level_name, "_level")]][[i]])[[1]] <- 
+      "id"
+    
+    level_list[[paste0(level_name, "_level")]][[i]] <- 
+      merge(level_list[[paste0(level_name, "_level")]][[i]],
+            t_transaction_group_table,
+            by.x = "id", by.y = "id") %>% 
+      filter(name != "0")
+  }
+  rm(i)
+}
+rm(level, level_name, level_depth, level_names)
+```
+
+# Workspace
+
+## Inputs
+### Define the Transparency ID and verify it is for the correct government:
+
+```{r}
+transparency_id <- 25
+```
+
+```{sql, connection = odbc_aws}
+SELECT name
+FROM entity
+WHERE id = ?transparency_id
+```
+
+### Define the Batch ID:
+
+```{r}
+# batch_id <- 
+```
+
+# Close
+
+```{r}
+dbDisconnect(odbc_aws)
+rm(list = ls())
+```

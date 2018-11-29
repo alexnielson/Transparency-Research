@@ -1,0 +1,262 @@
+---
+title: "Browse AWS 2.0"
+author: "Michael Jensen"
+date: "July 2018"
+output: html_notebook
+---
+# Program Description
+
+Browse AWS.
+
+# Program
+
+## Inputs, Packages, & Data Connections
+
+```{r}
+dsn_aws         <- "transpAWS"
+```
+
+```{r}
+library(odbc)
+library(lubridate)
+library(magrittr)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), dsn_aws)
+
+rm(dsn_aws)
+```
+
+## Entity-specific Data
+
+Define the entity's Transparency ID
+
+```{r}
+names_and_ids <- 
+  odbc_aws %>%
+  dbGetQuery(
+    paste("
+          SELECT name, id
+          FROM entity"))
+```
+
+```{r}
+transparency_id <- 1
+```
+
+### Entity Table
+
+```{r}
+entity_table <- 
+  odbc_aws %>% 
+  dbGetQuery(
+    paste("
+          SELECT name, id, govt_lvl, fiscal_period, payroll_period
+          FROM entity
+          WHERE id = ", transparency_id))
+```
+
+### Batch Table
+
+```{r}
+batch_table <- 
+  odbc_aws %>% 
+  dbGetQuery(
+    paste("
+          SELECT id, begin_txn_date, end_txn_date, upload_username,
+                 upload_date, processed_date, status, status_message
+          FROM batch
+          WHERE entity_id = ", transparency_id))
+```
+
+### Transaction Table
+
+```{r}
+all_transactions <- 
+  odbc_aws %>% 
+  dbGetQuery(
+    paste("
+          SELECT *
+          FROM transaction
+          WHERE batch_id = 52950"))
+```
+
+```{sql, connection = odbc_aws, output.var = "bad_batches"}
+SELECT COUNT(*)
+FROM transaction
+WHERE batch_id IN (
+SELECT id FROM batch WHERE status IN ('DELETED'))
+```
+
+#### Expenses
+
+```{r}
+expenses <- 
+  odbc_aws %>% 
+  dbGetQuery(
+    paste("
+          SELECT id, posting_date, amount, fiscal_year
+          FROM transaction
+          WHERE batch_id IN (
+            SELECT id
+            FROM batch
+            WHERE entity_id = ", transparency_id, "
+            AND status IN ('PROCESSED', 'PROCESSING'))
+          AND type = 1"))
+```
+
+#### Revenue
+
+```{r}
+revenues <- 
+  odbc_aws %>% 
+  dbGetQuery(
+    paste("
+          SELECT id, posting_date, amount, fiscal_year
+          FROM transaction
+          WHERE batch_id IN (
+            SELECT id
+            FROM batch
+            WHERE entity_id = ", transparency_id, "
+            AND status IN ('PROCESSED', 'PROCESSING'))
+          AND type = 2"))
+```
+
+#### W-2 Employee Compensation
+
+```{r}
+w2_comp <- 
+  odbc_aws %>% 
+  dbGetQuery(
+    paste("
+          SELECT id, posting_date, amount, fiscal_year
+          FROM transaction
+          WHERE batch_id IN (
+            SELECT id
+            FROM batch
+            WHERE entity_id = ", transparency_id, "
+            AND status IN ('PROCESSED', 'PROCESSING'))
+          AND type = 3"))
+```
+
+### Vendor Table
+
+```{sql, connection = odbc_aws, output.var = "vendor_table"}
+SELECT name
+FROM vendor
+```
+
+## Size of the database
+
+```{sql, connection = odbc_aws, output.var = "size"}
+select table_schema as 'Database', table_name as 'Table', 
+round(((data_length + index_length) / 1024 / 1024), 2) 'Size in MB'
+FROM information_schema.TABLES
+ORDER BY (data_length + index_length) DESC
+```
+
+```{r}
+sum(size$`Size in MB`)
+```
+
+## AWS Data
+
+### Record Counts
+
+Overall: 
+
+```{r}
+aws_table_status <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SHOW TABLE STATUS"))
+
+row_count <- sum(aws_table_status$Rows)
+```
+
+Per table:
+* Note there is a discrepancy between what is reported overall and what is reported per table. I don't know why the discrepancy exists.
+
+```{r}
+entity_count <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT COUNT(*) FROM entity"))
+
+batch_count <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT COUNT(*) FROM batch"))
+
+transaction_count <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT COUNT(*) FROM transaction"))
+```
+
+```{sql, connection = odbc_aws, output.var = "stuff"}
+select * from transaction where batch_id = 44169
+```
+
+```{sql, connection = odbc_aws, output.var = "index1"}
+show index from transaction
+```
+
+```{sql, connection = odbc_aws, output.var = "index2"}
+show index from batch
+```
+
+```{sql, connection = odbc_aws, output.var = "index3"}
+show index from entity
+```
+
+```{sql, connection = odbc_aws, output.var = "create_index"}
+CREATE INDEX transaction_batchid
+ON transaction (batch_id)
+```
+
+
+```{sql, connection = odbc_aws, output.var = "stuff"}
+SELECT DISTINCT posting_date
+FROM transaction
+WHERE batch_id IN (
+  SELECT id
+  FROM batch
+  WHERE entity_id = 259
+  AND status IN ('PROCESSED', 'PROCESSING'))
+AND type = 1
+AND fiscal_year > 2013
+AND YEAR(posting_date) = fiscal_year
+```
+
+```{sql, connection = odbc_aws, output.var = "stuff2"}
+EXPLAIN SELECT DISTINCT posting_date
+FROM transaction
+WHERE batch_id IN (
+  SELECT id
+  FROM batch
+  WHERE entity_id = 259
+  AND status IN ('PROCESSED', 'PROCESSING'))
+AND type = 1
+AND fiscal_year > 2013
+AND YEAR(posting_date) = fiscal_year
+```
+
+```{r}
+stuff2 %>% 
+  write.csv(
+    file = "C:/Users/mjensen1/Documents/stuff2.csv",
+    row.names = FALSE)
+```
+
+
+## Close
+
+```{r}
+dbDisconnect(odbc_aws)
+rm(list = ls())
+```

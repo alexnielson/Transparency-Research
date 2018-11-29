@@ -1,0 +1,110 @@
+---
+title: "Finlinson & Finlinson PLLC"
+date: "September 2018"
+output: html_notebook
+---
+# Program Description
+
+Determine the year-by-year expenditures to Finlinson & Finlinson PLLC for each local government that has Finlinson & Finlinson PLLC listed as a vendor.
+
+# Program
+
+## Packages & Data Connections
+
+```{r, message = FALSE}
+library(knitr)
+library(odbc)
+library(scales)
+library(stringr)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+## Year-by-Year Summary
+
+```{sql, connection = odbc_aws, output.var = "finlinson_vendors"}
+SELECT vendor.entity_id,
+       entity.name AS entity_name,
+       vendor.id   AS vendor_id,
+       vendor.name AS vendor_name
+FROM vendor
+JOIN entity 
+ON vendor.entity_id = entity.id
+WHERE vendor.id IN (
+  SELECT vendor_id
+  FROM vendor_summary
+  WHERE type = 1)
+AND vendor.name LIKE 'Finlinson%'
+```
+
+```{r}
+finlinson_vendors$entity_id <- 
+  finlinson_vendors$entity_id %>% 
+  as.numeric()
+
+finlinson_vendors$vendor_id <- 
+  finlinson_vendors$vendor_id %>% 
+  as.numeric()
+
+finlinson_finlinson <- 
+  finlinson_vendors %>% 
+  filter(
+    entity_name == "Central Davis Sewer District" |
+    entity_name == "Central Utah Water Conservancy District" |
+    entity_name == "Central Valley Water Reclamation Facility"|
+    entity_name == "Central Wasatch Commission" |
+    entity_name == "Jordan Valley Water Conservancy District" |
+    entity_name == "North Davis Sewer District" |
+    entity_name == "South Davis Sewer District" |
+    entity_name == "South Valley Sewer District" |
+    entity_name == "South Valley Water Reclamation Facility" |
+    entity_name == "Washington City" |
+    entity_name == "Washington County Water Conservancy District" |
+    entity_name == "Weber Basin Water Conservancy District") %>% 
+  as_tibble()
+
+rm(finlinson_vendors)
+```
+
+```{r}
+query_expenses_per_fy <- function(vendor_id) {
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT entity.name AS entity_name, 
+                 vendor_summary.fiscal_year,
+                 vendor_summary.total AS expense
+          FROM vendor_summary
+          JOIN entity
+          ON vendor_summary.entity_id = entity.id
+          WHERE vendor_summary.vendor_id = ", vendor_id, "
+          AND vendor_summary.type = 1"))
+}
+
+year_by_year <- 
+  finlinson_finlinson$vendor_id %>% 
+  map(query_expenses_per_fy) %>% 
+  bind_rows() %>% 
+  arrange(entity_name, fiscal_year) %>% 
+  as_tibble()
+
+year_by_year$fiscal_year <- 
+  year_by_year$fiscal_year %>% 
+  as.numeric()
+
+year_by_year$expense <- 
+  dollar(year_by_year$expense,
+         accuracy = .01)
+
+write.csv(year_by_year,
+          file = "~Year by Year.csv",
+          row.names = FALSE)
+```
+
+## Close
+
+```{r}
+dbDisconnect(odbc_aws)
+rm(list = ls())
+```
