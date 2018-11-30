@@ -1,0 +1,125 @@
+---
+title: "Browse Transparency Meta-Data"
+author: "Michael Jensen"
+date: "November 2018"
+output: html_notebook
+---
+# Program Description
+
+Browse the Transparency database meta-data.
+
+# Program
+
+## Packages & Data Connections
+
+```{r, message = FALSE}
+library(magrittr)
+library(odbc)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+## Table Row Counts
+
+```{sql, connection = odbc_aws, output.var = "count_batch"}
+SELECT COUNT(*) FROM batch
+```
+
+```{sql, connection = odbc_aws, output.var = "count_entity"}
+SELECT COUNT(*)
+FROM entity
+```
+
+```{sql, connection = odbc_aws, output.var = "count_transactions"}
+SELECT COUNT(*) FROM transaction
+```
+
+```{sql, connection = odbc_aws, output.var = "count_deleted_batches"}
+SELECT COUNT(*) FROM batch WHERE status = 'DELETED'
+```
+
+```{sql, connection = odbc_aws, output.var = "count_deleted_transactions"}
+SELECT COUNT(*) 
+FROM transaction 
+WHERE batch_id IN (
+  SELECT id
+  FROM batch
+  WHERE status = 'DELETED')
+```
+
+```{r}
+count_batch                <- as.numeric(count_batch$`COUNT(*)`)
+count_entity               <- as.numeric(count_entity$`COUNT(*)`)
+count_transactions         <- as.numeric(count_transactions$`COUNT(*)`)
+count_deleted_batches      <- as.numeric(count_deleted_batches$`COUNT(*)`)
+count_deleted_transactions <-
+  as.numeric(count_deleted_transactions$`COUNT(*)`)
+```
+
+## Information Schema Tables
+
+### Table Names and Information
+
+```{sql, connection = odbc_aws, output.var = "info_schema_tables"}
+SELECT *
+FROM information_schema.tables
+```
+
+### Data Size
+
+```{sql, connection = odbc_aws, output.var = "info_schema_size"}
+SELECT table_schema AS 'Database', 
+       table_name AS 'Table',
+       ROUND(((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024), 2) AS 'Size in MB'
+FROM information_schema.tables
+ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC
+```
+
+```{r}
+data_size_in_Mb <- round(sum(info_schema_size$`Size in MB`))
+```
+
+## Indexes
+
+Create an index (permission to do so is currently denied):
+
+```{sql, connection = odbc_aws}
+CREATE INDEX transaction_batchid
+ON transaction (batch_id)
+```
+
+View indexed variables:
+
+```{sql, connection = odbc_aws, output.var = "indexed_variables"}
+SELECT DISTINCT table_name, index_name
+FROM information_schema.statistics
+WHERE table_schema = 'transparency'
+```
+
+```{sql, connection = odbc_aws, output.var = "index_batch"}
+SHOW INDEX FROM batch
+```
+
+```{sql, connection = odbc_aws, output.var = "index_entity"}
+SHOW INDEX FROM entity
+```
+
+```{sql, connection = odbc_aws, output.var = "index_transaction"}
+SHOW INDEX FROM transaction
+```
+
+## R Object Size
+
+```{r}
+entity_transactions %>% 
+  object.size() %>% 
+  print(units = "auto")
+```
+
+## Close
+
+```{r}
+dbDisconnect(odbc_aws)
+rm(list = ls())
+```
