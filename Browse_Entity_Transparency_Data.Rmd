@@ -1,0 +1,106 @@
+---
+title: "Browse an Entity's Transparency Data"
+author: "Michael Jensen"
+date: "November 2018"
+output: html_notebook
+---
+# Program Description
+
+Browse a local government's Transparency data.
+
+# Program
+
+## Packages, Data Connection, and Input
+
+```{r}
+library(odbc)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+```{r}
+names_and_ids <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT name, id
+          FROM entity")) %>% 
+  arrange(name)
+```
+
+```{r}
+t_id <- 615
+
+rm(names_and_ids)
+```
+
+## Entity Table
+
+```{sql, connection=odbc_aws, output.var="entity_table"}
+SELECT * 
+FROM entity
+WHERE id = ?t_id
+```
+
+## Batch Table
+
+```{sql, connection=odbc_aws, output.var="batch_table"}
+SELECT 
+  id,
+  upload_date,
+  processed_date,
+  file_record_count,
+  file_total_amount,
+  begin_txn_date,
+  end_txn_date,
+  status,
+  status_message
+FROM batch
+WHERE entity_id = ?t_id
+ORDER BY upload_date DESC
+```
+
+## Transaction Tables
+
+```{sql, connection=odbc_aws, output.var="transaction_table"}
+SELECT *
+FROM transaction
+WHERE batch_id IN (
+  SELECT id
+  FROM batch
+  WHERE entity_id = ?t_id)
+```
+
+```{sql, connection=odbc_aws, output.var="batch_transactions"}
+SELECT *
+FROM transaction
+WHERE batch_id = 54311
+```
+
+## Vendor Table
+
+```{sql, connection=odbc_aws, output.var="vendor_table"}
+SELECT *
+FROM vendor
+WHERE entity_id = ?t_id
+```
+
+## Vendor Summary Table
+
+```{sql, connection=odbc_aws, output.var="vendor_summary_table"}
+SELECT *
+FROM vendor_summary
+WHERE entity_id = ?t_id
+```
+
+## Workspace
+
+
+
+## Close
+
+```{r}
+dbDisconnect(odbc_aws)
+rm(list = ls())
+```
