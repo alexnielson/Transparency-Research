@@ -35,22 +35,6 @@ FROM transaction_group
 WHERE name = "(TRS) Election Campaign Fund"
 ```
 
-```{r}
-get_parent_info <- function(parent_id) {
-  dbGetQuery(
-    odbc_aws,
-    paste("
-          SELECT id, name, parent_id, type
-          FROM transaction_group
-          WHERE id = ", as.double(parent_id))) %>% 
-    as.tibble()
-}
-
-ecf_parent_ids <- 
-  map(ecf_ids$parent_id, get_parent_info) %>% 
-  bind_rows()
-```
-
 ```{sql, connection=odbc_aws, output.var = "ecf_contributions"}
 SELECT vendor.name AS vendor_name,
        transaction.vendor_id, 
@@ -62,26 +46,19 @@ SELECT vendor.name AS vendor_name,
 FROM transaction
 JOIN vendor
 ON transaction.vendor_id = vendor.id
-WHERE 
-((fund1 = 1000843 AND fund2 = 1000873) OR (org2 = 1446563 AND org3 = 1446567))
+WHERE ((fund2 = 1000873) OR (org3 = 1446567))
 AND transaction.type = 1
 ```
 
-**Reported Vendor Names**
+**Reported Payee Names**
 
 ```{r}
 ecf_contributions %>% 
-  distinct(vendor_name)
+  distinct(vendor_name) %>% 
+  kable(col.names = "Name")
 ```
 
-```{r, eval=FALSE}
-# After reviewing the distinct vendor names, insert "are" or "are not" below:
-are_or_are_not <- "are not"
-```
-
-As shown in the table above, payee names `r are_or_are_not` reported to Transparency.
-
-**Sample of Data**
+**Sample of Reported Data**
 
 ```{r}
 ecf_contributions %>% 
