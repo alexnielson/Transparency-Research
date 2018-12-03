@@ -35,10 +35,20 @@ FROM transaction_group
 WHERE name = "(TRS) Election Campaign Fund"
 ```
 
-```{sql, connection=odbc_aws, output.var="ecf_parent_ids"}
-SELECT id, name, parent_id, type
-FROM transaction_group
-WHERE id IN (1000843, 1446563)
+```{r}
+get_parent_info <- function(parent_id) {
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT id, name, parent_id, type
+          FROM transaction_group
+          WHERE id = ", as.double(parent_id))) %>% 
+    as.tibble()
+}
+
+ecf_parent_ids <- 
+  map(ecf_ids$parent_id, get_parent_info) %>% 
+  bind_rows()
 ```
 
 ```{sql, connection=odbc_aws, output.var = "ecf_contributions"}
