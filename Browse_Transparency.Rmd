@@ -1,0 +1,269 @@
+---
+title: "Browse an Entity's Transparency Data"
+author: "Michael Jensen"
+date: "November 2018"
+output: html_notebook
+---
+# VERIFY THE CHANGES TO THE DATABASE ARE REFLECTED IN THIS CODE BEFORE USING IT TO MAKE DECISIONS
+# Program Description
+
+Browse a local government's Transparency data.
+
+# Program
+
+## Packages, Data Connection, and Input
+
+```{r}
+library(odbc)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+```{r}
+names_and_ids <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT name, id
+          FROM entity")) %>% 
+  arrange(name)
+```
+
+```{r}
+t_id <- 1
+
+rm(names_and_ids)
+```
+
+## Entity Table
+
+```{sql, connection=odbc_aws, output.var="entity_table"}
+SELECT * 
+FROM entity
+WHERE id = ?t_id
+```
+
+## Batch Table
+
+```{sql, connection=odbc_aws, output.var="batch_table"}
+SELECT 
+  id,
+  upload_date,
+  processed_date,
+  file_record_count,
+  file_total_amount,
+  begin_txn_date,
+  end_txn_date,
+  status,
+  status_message
+FROM batch
+WHERE entity_id = ?t_id
+ORDER BY upload_date DESC
+```
+
+## Transaction Tables
+
+```{sql, connection=odbc_aws, output.var="transaction_table"}
+SELECT *
+FROM transaction
+WHERE batch_id IN (
+  SELECT id
+  FROM batch
+  WHERE entity_id = ?t_id)
+```
+
+```{sql, connection=odbc_aws, output.var="batch_transactions"}
+SELECT *
+FROM transaction
+WHERE batch_id = 55326
+```
+
+## Transaction Group Table
+
+```{sql, connection=odbc_aws, output.var="transaction_group"}
+SELECT *
+FROM transaction_group
+```
+
+## Vendor Table
+
+```{sql, connection=odbc_aws, output.var="vendor_table"}
+SELECT *
+FROM vendor
+WHERE entity_id = ?t_id
+```
+
+## Vendor Summary Table
+
+```{sql, connection=odbc_aws, output.var="vendor_summary_table"}
+SELECT *
+FROM vendor_summary
+WHERE entity_id = ?t_id
+AND type = 3
+```
+
+## Close
+
+```{r}
+dbDisconnect(odbc_aws)
+rm(list = ls())
+```
+
+# Workspace
+
+```{sql, connection=odbc_aws, output.var="fy_2018_transactions"}
+SELECT *
+FROM transaction
+WHERE batch_id IN (
+  SELECT id
+  FROM batch
+  WHERE entity_id = ?t_id)
+AND fiscal_year = 2018
+```
+
+```{sql, connection=odbc_aws, output.var="transaction_group"}
+SELECT id, name
+FROM transaction_group
+```
+
+```{sql, connection=odbc_aws, output.var="vendor_table"}
+SELECT id, name
+FROM vendor
+WHERE entity_id = ?t_id
+```
+
+```{r}
+fy_2018_transactions <- 
+  fy_2018_transactions %>% 
+  select(id, posting_date, amount, entity_trans_id, description, type, 
+         org1, org2, org3, cat1, cat2, fund1, fund2, vendor_id, account_number)
+
+colnames(fy_2018_transactions)[[15]] <- "uniform_chart_of_accounts_number"
+
+fy_2018_transactions$id <- 
+  fy_2018_transactions$id %>% 
+  as.integer()
+
+fy_2018_transactions$org1 <- 
+  fy_2018_transactions$org1 %>% 
+  as.integer()
+
+fy_2018_transactions$org2 <- 
+  fy_2018_transactions$org2 %>% 
+  as.integer()
+
+fy_2018_transactions$org3 <- 
+  fy_2018_transactions$org3 %>% 
+  as.integer()
+
+fy_2018_transactions$cat1 <- 
+  fy_2018_transactions$cat1 %>% 
+  as.integer()
+
+fy_2018_transactions$cat2 <- 
+  fy_2018_transactions$cat2 %>% 
+  as.integer()
+
+fy_2018_transactions$fund1 <- 
+  fy_2018_transactions$fund1 %>% 
+  as.integer()
+
+fy_2018_transactions$fund2 <- 
+  fy_2018_transactions$fund2 %>% 
+  as.integer()
+
+fy_2018_transactions$vendor_id <- 
+  fy_2018_transactions$vendor_id %>% 
+  as.integer()
+
+transaction_group$id <- 
+  transaction_group$id %>% 
+  as.integer()
+
+vendor_table$id <- 
+  vendor_table$id %>% 
+  as.integer()
+```
+
+```{r}
+fy_2018_transactions <- 
+  fy_2018_transactions %>% 
+  left_join(transaction_group,
+            by = c("org1" = "id")) %>% 
+  select(-"org1")
+
+colnames(fy_2018_transactions)[[15]] <- "organization_1"
+
+fy_2018_transactions <- 
+  fy_2018_transactions %>% 
+  left_join(transaction_group,
+            by = c("org2" = "id")) %>% 
+  select(-"org2")
+
+colnames(fy_2018_transactions)[[15]] <- "organization_2"
+
+fy_2018_transactions <- 
+  fy_2018_transactions %>% 
+  left_join(transaction_group,
+            by = c("org3" = "id")) %>% 
+  select(-"org3")
+
+colnames(fy_2018_transactions)[[15]] <- "organization_3"
+
+fy_2018_transactions <- 
+  fy_2018_transactions %>% 
+  left_join(transaction_group,
+            by = c("cat1" = "id")) %>% 
+  select(-"cat1")
+
+colnames(fy_2018_transactions)[[15]] <- "category_1"
+
+fy_2018_transactions <- 
+  fy_2018_transactions %>% 
+  left_join(transaction_group,
+            by = c("cat2" = "id")) %>% 
+  select(-"cat2")
+
+colnames(fy_2018_transactions)[[15]] <- "category_2"
+
+fy_2018_transactions <- 
+  fy_2018_transactions %>% 
+  left_join(transaction_group,
+            by = c("fund1" = "id")) %>% 
+  select(-"fund1")
+
+colnames(fy_2018_transactions)[[15]] <- "fund_1"
+
+fy_2018_transactions <- 
+  fy_2018_transactions %>% 
+  left_join(transaction_group,
+            by = c("fund2" = "id")) %>% 
+  select(-"fund2")
+
+colnames(fy_2018_transactions)[[15]] <- "fund_2"
+
+fy_2018_transactions <- 
+  fy_2018_transactions %>% 
+  left_join(vendor_table,
+            by = c("vendor_id" = "id")) %>% 
+  select(-"vendor_id")
+
+colnames(fy_2018_transactions)[[15]] <- "vendor"
+```
+
+```{r}
+fy_2018_transactions <-
+  fy_2018_transactions %>% 
+  mutate(transaction_type = if_else(type == 1, "expense", "revenue")) %>% 
+  select(-type) %>% 
+  select(id, transaction_type, posting_date, amount, entity_trans_id,
+         description, vendor, organization_1, organization_2, organization_3, 
+         category_1, category_2, fund_1, fund_2, 
+         uniform_chart_of_accounts_number)
+```
+
+```{r}
+fy_2018_transactions %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Utah_County_2018.csv")
+```
