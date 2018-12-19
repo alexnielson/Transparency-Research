@@ -1,0 +1,77 @@
+---
+title: "Browse an Entity's StateDW Data"
+author: "Michael Jensen"
+date: "December 2018"
+output: html_notebook
+---
+# Inputs, Packages, & Data Connections
+
+```{r}
+library(odbc)
+
+odbc_dw  <- dbConnect(odbc::odbc(), "StateDW", password = "DW1234")
+```
+
+Using the Adaptive Server Enterprise ODBC to select a table from State Data Warehouse (StateDW) requires calling the table as <database>.<owner>.<object_name>.<column_name>. Use "sp_help" to identify the owner:
+
+```{r}
+sp_help <- 
+  dbGetQuery(
+    odbc_dw,
+    "sp_help")
+```
+
+# Table Query Templates
+
+## Account_Type Table
+
+```{sql, connection=odbc_dw, output.var=account_type_table}
+SELECT *
+FROM Account_Type
+```
+
+## Accounting_Journal Table
+
+Use a WHERE statement in the query below, as the table is large enough that R may not be able to import all the information or will take a long time to do so.
+
+```{sql, connection=odbc_dw, output.var=accounting_journal_table}
+SELECT 
+  Account_Type,
+  Amount,
+  Department,
+  Fiscal_Year_Period,
+  Line_Description,
+  Vendor_Customer,
+  Vendor_Customer_Name
+FROM StateDW.dbo.Accounting_Journal
+WHERE  LIKE 
+```
+
+## Fund Table
+
+```{sql, connection=odbc_dw, output.var=fund_table}
+SELECT *
+FROM StateDW.dbo.Fund
+```
+
+## Vendor_Customer Table
+
+```{sql, connection=odbc_dw, output.var=vendor_customer_table}
+SELECT 
+  Vendor_Customer,
+  Legal_Name, 
+  Alias_Name,
+  Parent_Account_Code, 
+  Effective_Begin_Date,
+  Classification
+FROM StateDW.dbo.Vendor_Customer
+```
+
+# Close
+
+```{r}
+dbDisconnect(odbc_dw)
+rm(list = ls())
+```
+
+# Workspace
