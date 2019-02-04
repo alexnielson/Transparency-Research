@@ -1,0 +1,749 @@
+---
+title: "The State of Utah and Utah Interactive"
+author: "Michael Jensen"
+date: "December 2018"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+***
+# Program Description
+
+What does the Transparency data tell us about the financial relationship between the State of Utah and Utah Interactive. In particular,
+
+* How much does the State of Utah pay Utah Interactive?
+* In which direction does money flow between the State of Utah and Utah Interactive?
+* Does Utah Interactive have more than one contract with the State of Utah?
+* Which sub-organizations of the State of Utah have the greatest financial relationship with Utah Interactive?
+
+# Program
+
+## Inputs, Packages, & Data Connections
+
+```{r}
+library(knitr)
+library(odbc)
+library(scales)
+library(stringr)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+odbc_dw  <- dbConnect(odbc::odbc(), "StateDW", password = "DW1234")
+```
+
+## Transparency
+
+### Vendor IDs
+
+```{sql, connection=odbc_aws, output.var=aws_vendor_is_ui}
+SELECT
+  vendor.id   AS vendor_id,
+  vendor.name AS vendor_name
+FROM vendor
+JOIN entity
+ON vendor.entity_id = entity.id
+WHERE (
+  vendor.name LIKE "%utah interactive%" OR
+  vendor.name LIKE "ui%")
+AND  (
+  vendor.name NOT LIKE "uinta%"  AND
+  vendor.name NOT LIKE "uia%"    AND
+  vendor.name NOT LIKE "uil%"    AND
+  vendor.name NOT LIKE "uip%"    AND
+  vendor.name NOT LIKE "uis%inc" AND
+  vendor.name NOT LIKE "uit%")
+AND entity_id = 1
+```
+
+The following have some tie to Utah Interactive (e.g., appear in the State's contract with Utah Interactive as a related entity or referenced service) and may appear as a vendor name (my purpose here is to cast a wide net and see what appears in the Transparency data):
+
+* NIC Inc. (Utah Interactive is a subsidiary)
+* Chase Bank
+* GovPay
+* Portal Revenue Account
+* StateDX
+* Richard Olsen (his name appears on UI's contract with the State)
+
+```{sql, connection=odbc_aws, output.var=aws_vendor_is_other}
+SELECT
+  vendor.id   AS vendor_id,
+  vendor.name AS vendor_name
+FROM vendor
+JOIN entity 
+ON vendor.entity_id = entity.id
+WHERE (
+  vendor.name LIKE "%nic inc%"                 OR
+  vendor.name LIKE "%nicusa%"                  OR
+  vendor.name LIKE "%nic usa%"                 OR
+  vendor.name LIKE "%nic electronic services%" OR
+  vendor.name LIKE "%egov%"                    OR
+  vendor.name LIKE "%chase bank%"              OR
+  vendor.name LIKE "%chase payment services%"  OR
+  vendor.name LIKE "%govpay%"                  OR
+  vendor.name LIKE "%richard olsen%"           OR
+  vendor.name LIKE "%portal%"                  OR
+  vendor.name LIKE "%statedx%")
+AND (
+  vendor.name NOT LIKE "%clinic inc%"    AND
+  vendor.name NOT LIKE "%carbonic inc"   AND
+  vendor.name NOT LIKE "%electronic inc" AND
+  vendor.name NOT LIKE "environic inc"   AND
+  vendor.name NOT LIKE "ferhatbegovic%"  AND
+  vendor.name NOT LIKE "%mechanic inc")
+AND entity_id = 1
+```
+
+```{r}
+aws_vendor_is_ui <- 
+  aws_vendor_is_ui %>% 
+  as_tibble()
+
+aws_vendor_is_other <- 
+  aws_vendor_is_other %>% 
+  as_tibble()
+
+aws_vendor_is_ui$vendor_id <- 
+  as.character(aws_vendor_is_ui$vendor_id)
+
+aws_vendor_is_other$vendor_id <- 
+  as.character(aws_vendor_is_other$vendor_id)
+
+vendor_ids <- 
+  list(aws_vendor_is_ui    = aws_vendor_is_ui,
+       aws_vendor_is_other = aws_vendor_is_other)
+
+rm(aws_vendor_is_ui, aws_vendor_is_other)
+```
+
+### Vendor Summary Table
+
+```{r}
+query_vendor_summary_table <- function(vendor_id) {
+  # Arguments:
+  # - vendor_id: The vendor ID.
+  
+  # Returns:
+  # A tibble containing the queried information from the Summary Table for the
+  # specified vendor.
+  
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT vendor_id, fiscal_year, type, total
+          FROM vendor_summary
+          WHERE vendor_id = ", vendor_id, "
+          AND type <> 5")) %>% 
+    as_tibble()
+}
+
+vendor_summary_table_info <- list()
+
+vendor_summary_table_info[["ui"]] <- 
+  vendor_ids[["aws_vendor_is_ui"]] %>% 
+  .$vendor_id %>% 
+  map(query_vendor_summary_table) %>% 
+  bind_rows() %>% 
+  mutate(vendor_id = as.character(vendor_id)) %>% 
+  left_join(vendor_ids[["aws_vendor_is_ui"]], by = "vendor_id") %>% 
+  select(vendor_name, vendor_id, fiscal_year, type, total)
+
+vendor_summary_table_info[["other"]] <- 
+  vendor_ids[["aws_vendor_is_other"]] %>% 
+  .$vendor_id %>% 
+  map(query_vendor_summary_table) %>% 
+  bind_rows() %>% 
+  mutate(vendor_id = as.character(vendor_id)) %>% 
+  left_join(vendor_ids[["aws_vendor_is_other"]], by = "vendor_id") %>% 
+  select(vendor_name, vendor_id, fiscal_year, type, total)
+
+vendor_summary_table_info[["year_by_year_ui"]] <- 
+  vendor_summary_table_info[["ui"]] %>% 
+  group_by(fiscal_year) %>% 
+  summarize(total = sum(total)) %>% 
+  mutate(total = dollar(total))
+
+vendor_summary_table_info[["year_by_year_other"]] <- 
+  vendor_summary_table_info[["other"]] %>% 
+  group_by(vendor_name, fiscal_year) %>% 
+  summarize(total = sum(total)) %>% 
+  mutate(total = dollar(total))
+
+vendor_summary_table_info[["total_ui"]] <- 
+  vendor_summary_table_info[["ui"]] %>% 
+  summarize(total = sum(total)) %>% 
+  mutate(total = dollar(total))
+  
+vendor_summary_table_info[["total_other"]] <- 
+  vendor_summary_table_info[["other"]] %>% 
+  group_by(vendor_name) %>% 
+  summarize(total = sum(total)) %>% 
+  mutate(total = dollar(total))
+
+rm(query_vendor_summary_table)
+```
+
+### Transaction Tables
+
+```{r, message=FALSE}
+query_transaction_table <- function(vendor_id, table_name) {
+  # Arguments:
+  # - vendor_id: The vendor ID.
+  # - table_name: The name of the transaction table (e.g., transaction,
+  #   transaction_2009, transaction_2013).
+  
+  # Returns:
+  # A tibble containing the queried transaction information from the specified
+  # Transaction Table for the specified vendor.
+  
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT vendor_id, fiscal_year, posting_date, type, amount, 
+                 description, contract_name, contract_number, org1, org2, org3,
+                 cat1, cat2, cat3, fund1, fund2
+          FROM ", table_name, "
+          WHERE vendor_id = ", vendor_id, "
+          AND type <> 5")) %>% 
+    as_tibble()
+}
+
+transaction_group_table <- 
+  dbGetQuery(
+    odbc_aws,
+    "SELECT id, name FROM transaction_group")
+
+transaction_group_table$id <- 
+  as.character(transaction_group_table$id)
+
+transaction_table_for_ui <- 
+  list(
+    transaction = 
+    map(vendor_ids[["aws_vendor_is_ui"]]$vendor_id,
+        query_transaction_table,
+        table_name = "transaction") %>% 
+    bind_rows(),
+    
+    transaction_2009 = 
+      map(vendor_ids[["aws_vendor_is_ui"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2009") %>% 
+      bind_rows(),
+    
+    transaction_2010 = 
+      map(vendor_ids[["aws_vendor_is_ui"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2010") %>% 
+      bind_rows(),
+    
+    transaction_2011 = 
+      map(vendor_ids[["aws_vendor_is_ui"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2011") %>% 
+      bind_rows(),
+    
+    transaction_2012 = 
+      map(vendor_ids[["aws_vendor_is_ui"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2012") %>% 
+      bind_rows(),
+    
+    transaction_2013 = 
+      map(vendor_ids[["aws_vendor_is_ui"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2013") %>% 
+      bind_rows()) %>% 
+  bind_rows() %>% 
+  mutate(vendor_id   = as.character(vendor_id),
+         fiscal_year = as.character(fiscal_year),
+         org1        = as.character(org1),
+         org2        = as.character(org2),
+         org3        = as.character(org3),
+         cat1        = as.character(cat1),
+         cat2        = as.character(cat2),
+         cat3        = as.character(cat3),
+         fund1       = as.character(fund1),
+         fund2       = as.character(fund2)) %>% 
+  left_join(vendor_ids[["aws_vendor_is_ui"]])
+
+transaction_table_for_ui <- 
+  transaction_table_for_ui %>% 
+  left_join(transaction_group_table,
+            by = c("org1" = "id")) %>% 
+  select(-"org1") %>% 
+  rename("org1" = "name")
+
+transaction_table_for_ui <- 
+  transaction_table_for_ui %>% 
+  left_join(transaction_group_table,
+            by = c("org2" = "id")) %>% 
+  select(-"org2") %>% 
+  rename("org2" = "name")
+
+transaction_table_for_ui <- 
+  transaction_table_for_ui %>% 
+  left_join(transaction_group_table,
+            by = c("org3" = "id")) %>% 
+  select(-"org3") %>% 
+  rename("org3" = "name")
+
+transaction_table_for_ui <- 
+  transaction_table_for_ui %>% 
+  left_join(transaction_group_table,
+            by = c("cat1" = "id")) %>% 
+  select(-"cat1") %>% 
+  rename("cat1" = "name")
+
+transaction_table_for_ui <- 
+  transaction_table_for_ui %>% 
+  left_join(transaction_group_table,
+            by = c("cat2" = "id")) %>% 
+  select(-"cat2") %>% 
+  rename("cat2" = "name")
+
+transaction_table_for_ui <- 
+  transaction_table_for_ui %>% 
+  left_join(transaction_group_table,
+            by = c("cat3" = "id")) %>% 
+  select(-"cat3") %>% 
+  rename("cat3" = "name")
+
+transaction_table_for_ui <- 
+  transaction_table_for_ui %>% 
+  left_join(transaction_group_table,
+            by = c("fund1" = "id")) %>% 
+  select(-"fund1") %>% 
+  rename("fund1" = "name")
+
+transaction_table_for_ui <- 
+  transaction_table_for_ui %>% 
+  left_join(transaction_group_table,
+            by = c("fund2" = "id")) %>% 
+  select(-"fund2") %>% 
+  rename("fund2" = "name")
+
+transaction_table_for_ui <- 
+  transaction_table_for_ui %>% 
+  select(vendor_name, vendor_id, fiscal_year, posting_date, type, amount,
+         description, contract_name, contract_number, org1, org2, org3, 
+         cat1, cat2, cat3, fund1, fund2)
+
+transaction_table_for_other <- 
+  list(
+    transaction = 
+    map(vendor_ids[["aws_vendor_is_other"]]$vendor_id,
+        query_transaction_table,
+        table_name = "transaction") %>% 
+    bind_rows(),
+    
+    transaction_2009 = 
+      map(vendor_ids[["aws_vendor_is_other"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2009") %>% 
+      bind_rows(),
+    
+    transaction_2010 = 
+      map(vendor_ids[["aws_vendor_is_other"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2010") %>% 
+      bind_rows(),
+    
+    transaction_2011 = 
+      map(vendor_ids[["aws_vendor_is_other"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2011") %>% 
+      bind_rows(),
+    
+    transaction_2012 = 
+      map(vendor_ids[["aws_vendor_is_other"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2012") %>% 
+      bind_rows(),
+    
+    transaction_2013 = 
+      map(vendor_ids[["aws_vendor_is_other"]]$vendor_id,
+          query_transaction_table,
+          table_name = "transaction_2013") %>% 
+      bind_rows()) %>% 
+  bind_rows() %>% 
+  mutate(vendor_id   = as.character(vendor_id),
+         fiscal_year = as.character(fiscal_year),
+         org1        = as.character(org1),
+         org2        = as.character(org2),
+         org3        = as.character(org3),
+         cat1        = as.character(cat1),
+         cat2        = as.character(cat2),
+         cat3        = as.character(cat3),
+         fund1       = as.character(fund1),
+         fund2       = as.character(fund2)) %>% 
+  left_join(vendor_ids[["aws_vendor_is_other"]],
+            by = "vendor_id")
+
+transaction_table_for_other <- 
+  transaction_table_for_other %>% 
+  left_join(transaction_group_table,
+            by = c("org1" = "id")) %>% 
+  select(-"org1") %>% 
+  rename("org1" = "name")
+
+transaction_table_for_other <- 
+  transaction_table_for_other %>% 
+  left_join(transaction_group_table,
+            by = c("org2" = "id")) %>% 
+  select(-"org2") %>% 
+  rename("org2" = "name")
+
+transaction_table_for_other <- 
+  transaction_table_for_other %>% 
+  left_join(transaction_group_table,
+            by = c("org3" = "id")) %>% 
+  select(-"org3") %>% 
+  rename("org3" = "name")
+
+transaction_table_for_other <- 
+  transaction_table_for_other %>% 
+  left_join(transaction_group_table,
+            by = c("cat1" = "id")) %>% 
+  select(-"cat1") %>% 
+  rename("cat1" = "name")
+
+transaction_table_for_other <- 
+  transaction_table_for_other %>% 
+  left_join(transaction_group_table,
+            by = c("cat2" = "id")) %>% 
+  select(-"cat2") %>% 
+  rename("cat2" = "name")
+
+transaction_table_for_other <- 
+  transaction_table_for_other %>% 
+  left_join(transaction_group_table,
+            by = c("cat3" = "id")) %>% 
+  select(-"cat3") %>% 
+  rename("cat3" = "name")
+
+transaction_table_for_other <- 
+  transaction_table_for_other %>% 
+  left_join(transaction_group_table,
+            by = c("fund1" = "id")) %>% 
+  select(-"fund1") %>% 
+  rename("fund1" = "name")
+
+transaction_table_for_other <- 
+  transaction_table_for_other %>% 
+  left_join(transaction_group_table,
+            by = c("fund2" = "id")) %>% 
+  select(-"fund2") %>% 
+  rename("fund2" = "name")
+
+transaction_table_for_other <- 
+  transaction_table_for_other %>% 
+  select(vendor_name, vendor_id, fiscal_year, posting_date, type, amount,
+         description, contract_name, contract_number, org1, org2, org3, 
+         cat1, cat2, cat3, fund1, fund2)
+
+transaction_table_info <- 
+  list(ui    = transaction_table_for_ui,
+       other = transaction_table_for_other)
+
+rm(transaction_table_for_ui, transaction_table_for_other, transaction_group_table)
+
+transaction_table_info[["year_by_year_ui"]] <- 
+  transaction_table_info[["ui"]] %>% 
+  group_by(fiscal_year) %>% 
+  summarize(total = sum(amount)) %>% 
+  mutate(total = dollar(total))
+
+transaction_table_info[["year_by_year_other"]] <- 
+  transaction_table_info[["other"]] %>% 
+  group_by(vendor_name, fiscal_year) %>% 
+  summarize(total = sum(amount)) %>% 
+  mutate(total = dollar(total))
+
+transaction_table_info[["total_ui"]] <- 
+  transaction_table_info[["ui"]] %>% 
+  summarize(total = sum(amount)) %>% 
+  mutate(total = dollar(total))
+
+transaction_table_info[["total_other"]] <- 
+  transaction_table_info[["other"]] %>% 
+  group_by(vendor_name) %>% 
+  summarize(total = sum(amount)) %>% 
+  mutate(total = dollar(total))
+
+transaction_table_info[["by_org_3_ui"]] <- 
+  transaction_table_info[["ui"]] %>% 
+  group_by(org1, org2, org3) %>% 
+  summarize(total = sum(amount)) %>% 
+  arrange(desc(total)) %>% 
+  mutate(total = dollar(total))
+
+transaction_table_info[["distinct_contract_names_and_ids_ui"]] <- 
+  transaction_table_info[["ui"]] %>% 
+  distinct(vendor_name, vendor_id)
+
+transaction_table_info[["transaction_descriptions_ui"]] <- 
+  transaction_table_info[["ui"]] %>% 
+  distinct(description) %>% 
+  arrange(description)
+
+transaction_table_info[["transaction_descriptions_other"]] <- 
+  transaction_table_info[["other"]] %>% 
+  distinct(description) %>% 
+  arrange(description)
+
+rm(query_transaction_table)
+```
+
+## StateDW
+
+### Vendor IDS
+
+*Note: Using the Adaptive Server Enterprise ODBC to select a table from State Data Warehouse (StateDW) requires calling the table as <database>.<owner>.<object_name>.<column_name>. Use "sp_help" to identify the owner:*
+
+```{r}
+sp_help <- 
+  dbGetQuery(
+    odbc_dw,
+    "sp_help")
+```
+
+```{sql, connection=odbc_dw, output.var=dw_vendor_is_ui}
+SELECT 
+  Vendor_Customer AS vendor_id, 
+  Legal_Name      AS vendor_name
+FROM StateDW.dbo.Vendor_Customer
+WHERE (
+  LOWER(Legal_Name) LIKE "%utah interactive%" OR
+  LOWER(Legal_Name) LIKE "ui%")
+AND (
+  LOWER(Legal_Name) NOT LIKE "uint%"   AND
+  LOWER(Legal_Name) NOT LIKE "uil%"    AND
+  LOWER(Legal_Name) NOT LIKE "uin%"    AND
+  LOWER(Legal_Name) NOT LIKE "uis%"    AND
+  LOWER(Legal_Name) NOT LIKE "uit%")
+```
+
+```{sql, connection=odbc_dw, output.var=dw_vendor_is_other}
+SELECT 
+  Vendor_Customer AS vendor_id, 
+  Legal_Name      AS vendor_name
+FROM StateDW.dbo.Vendor_Customer
+WHERE (
+  LOWER(Legal_Name) LIKE "%nic inc%"                 OR
+  LOWER(Legal_Name) LIKE "%nicusa%"                  OR
+  LOWER(Legal_Name) LIKE "%nic usa%"                 OR
+  LOWER(Legal_Name) LIKE "%nic electronic services%" OR
+  LOWER(Legal_Name) LIKE "%egov%"                    OR
+  LOWER(Legal_Name) LIKE "%chase bank%"              OR
+  LOWER(Legal_Name) LIKE "%chase payment services%"  OR
+  LOWER(Legal_Name) LIKE "%govpay%"                  OR
+  LOWER(Legal_Name) LIKE "%richard olsen%"           OR
+  LOWER(Legal_Name) LIKE "%portal%"                  OR
+  LOWER(Legal_Name) LIKE "%statedx%")
+AND (
+  LOWER(Legal_Name) NOT LIKE "benito segovia"   AND
+  LOWER(Legal_Name) NOT LIKE "ciara gregovich"  AND
+  LOWER(Legal_Name) NOT LIKE "%clinic inc%"     AND
+  LOWER(Legal_Name) NOT LIKE "%cliinic inc%"    AND
+  LOWER(Legal_Name) NOT LIKE "%carbonic inc%"   AND
+  LOWER(Legal_Name) NOT LIKE "%electronic inc%" AND
+  LOWER(Legal_Name) NOT LIKE "emina alibegovic" AND
+  LOWER(Legal_Name) NOT LIKE "environic inc%"   AND
+  LOWER(Legal_Name) NOT LIKE "%mechanic inc%"   AND
+  LOWER(Legal_Name) NOT LIKE "segovia inc%")
+```
+
+```{r}
+dw_vendor_is_ui <- 
+  dw_vendor_is_ui %>% 
+  as_tibble()
+
+dw_vendor_is_other <- 
+  dw_vendor_is_other %>% 
+  as_tibble()
+
+vendor_ids[["dw_vendor_is_ui"]]    <- dw_vendor_is_ui
+vendor_ids[["dw_vendor_is_other"]] <- dw_vendor_is_other
+
+rm(dw_vendor_is_ui, dw_vendor_is_other)
+```
+
+### Accounting Journal Table
+
+#### All UI-related Transactions
+
+```{sql, connection=odbc_dw, output.var=aj_table_ui}
+SELECT 
+  Vendor_Customer_Name, 
+  Vendor_Customer,
+  Fiscal_Year, 
+  Amount, 
+  Department,
+  Division,
+  Line_Description, 
+  Account_Type
+FROM StateDW.dbo.Accounting_Journal
+WHERE Vendor_Customer IN (
+  SELECT 
+    Vendor_Customer AS vendor_id
+  FROM StateDW.dbo.Vendor_Customer
+  WHERE (
+    LOWER(Legal_Name) LIKE "%utah interactive%" OR
+    LOWER(Legal_Name) LIKE "ui%")
+  AND (
+    LOWER(Legal_Name) NOT LIKE "uint%"   AND
+    LOWER(Legal_Name) NOT LIKE "uil%"    AND
+    LOWER(Legal_Name) NOT LIKE "uin%"    AND
+    LOWER(Legal_Name) NOT LIKE "uis%"    AND
+    LOWER(Legal_Name) NOT LIKE "uit%"))
+```
+
+```{sql, connection=odbc_dw, output.var=department_table}
+SELECT Department, Department_Name
+FROM Department
+```
+
+```{r}
+aj_table_ui <- 
+  aj_table_ui %>% 
+  as_tibble()
+
+department_table <- 
+  department_table %>% 
+  as_tibble()
+
+department_table$Department <- 
+  department_table$Department %>% 
+  str_trim(side = "right")
+
+aj_table_ui <- 
+  aj_table_ui %>%
+  left_join(department_table,
+            by = "Department") %>% 
+  select(-Department)
+
+rm(department_table)
+
+aj_table_info <- 
+  list(ui = aj_table_ui)
+
+rm(aj_table_ui)
+```
+
+#### Expenditures
+
+```{r}
+aj_table_info[["exp_year_by_year"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "22") %>% 
+  group_by(Fiscal_Year) %>% 
+  summarize(total = sum(Amount)) %>% 
+  mutate(total = dollar(total))
+
+aj_table_info[["exp_total_ui"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "22") %>% 
+  summarize(total = sum(Amount)) %>% 
+  mutate(total = dollar(total))
+
+aj_table_info[["exp_by_department"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "22") %>% 
+  group_by(Department_Name) %>% 
+  summarize(total = sum(Amount)) %>% 
+  arrange(desc(total)) %>% 
+  mutate(total = dollar(total))
+
+aj_table_info[["exp_line_descriptions"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "22") %>% 
+  distinct(Line_Description)
+
+aj_table_info[["exp_vendor_names"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "22") %>% 
+  distinct(Vendor_Customer_Name, Vendor_Customer)
+```
+
+#### Revenues
+
+```{r}
+aj_table_info[["rev_year_by_year"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "31") %>% 
+  group_by(Fiscal_Year) %>% 
+  summarize(total = sum(Amount)) %>% 
+  mutate(total = dollar(total))
+
+aj_table_info[["rev_total_ui"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "31") %>% 
+  summarize(total = sum(Amount)) %>% 
+  mutate(total = dollar(total))
+
+aj_table_info[["rev_by_department"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "31") %>% 
+  group_by(Department_Name) %>% 
+  summarize(total = sum(Amount)) %>% 
+  arrange(desc(total)) %>% 
+  mutate(total = dollar(total))
+
+aj_table_info[["rev_line_descriptions"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "31") %>% 
+  distinct(Line_Description)
+
+aj_table_info[["rev_vendor_names"]] <- 
+  aj_table_info[["ui"]] %>% 
+  filter(Account_Type == "31") %>% 
+  distinct(Vendor_Customer_Name, Vendor_Customer)
+```
+
+## Export
+
+```{r}
+transaction_table_info[["ui"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table UI.csv")
+
+transaction_table_info[["other"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table Other.csv")
+
+transaction_table_info[["year_by_year_ui"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table Year by Year UI.csv")
+
+transaction_table_info[["year_by_year_other"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table Year by Year Other.csv")
+
+transaction_table_info[["total_ui"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table Total UI.csv")
+
+transaction_table_info[["total_other"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table Total Other.csv")
+
+transaction_table_info[["by_org_3_ui"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table By Org UI.csv")
+
+transaction_table_info[["distinct_contract_names_and_ids_ui"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table Contract Names and IDs UI.csv")
+
+transaction_table_info[["transaction_descriptions_ui"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table Descriptions UI.csv")
+
+transaction_table_info[["transaction_descriptions_other"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/Transaction Table Descriptions Other.csv")
+
+aj_table_info[["ui"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/FINET UI.csv")
+
+aj_table_info[["rev_year_by_year"]] %>% 
+  write_csv("C:/Users/mjensen1/Desktop/FINET Revenue from UI.csv")
+```
+
+## Close
+
+```{r}
+dbDisconnect(odbc_aws, odbc_dw)
+rm(list = ls())
+```
