@@ -117,7 +117,7 @@ accounting_journal_table %>%
 
 1) As of July 2018, the State Treasurer's Office is reporting the names of the political parties that receive Election Campaign Fund contributions.
 
-2) As of November 2018, the names of the political parties are still not being reported to Transparency. During a discussion with John Draney, I discovered that the State Treasurer's Office reported the names of the political parties to FINET, but did so in the "Legal_Name" field rather than the vendor name field that is exported to Transparency. John Draney said the problem would be fixed by someone named Rony.
+2) As of November 2018, the names of the political parties are still not being reported to Transparency. During a discussion with John Draney, I discovered that the State Treasurer's Office reported the names of the political parties to FINET, but did so in the "Legal_Name" field rather than the vendor name field that is exported to Transparency. John Draney said the problem would be fixed by someone named Rony (December 26, 2018 update: political party names now appear in the Transparency database).
 
 3) During a phone call with Jason Nielson on December 19, 2018, he said that the State Treasurer's Office reports the names of the political parties in the Legal_Name field because of the unique nature of the way contributions from the Election Campaign Fund are paid to political parties (the political parties are not considered vendors in FINET, and therefore have no vendor ID.)
 
