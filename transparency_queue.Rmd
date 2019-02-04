@@ -1,0 +1,98 @@
+---
+title: "Transparency Queue"
+author: "Michael Jensen"
+output: html_notebook
+---
+# Program Description
+
+Determine the number of files waiting to be processed, and estimate how long it will take for the files in the queue to be processed.
+
+# Program
+
+```{r}
+library(odbc)
+library(lubridate)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+Assuming that a processed_date value that is 21 days or later than the upload_date value indicates a subsequent processing of the batch and therefore should be filtered from the data set, what was the upload-to-process time for the batch with the highest record count?
+
+```{sql, connection=odbc_aws, output.var="processed_batches"}
+SELECT 
+  upload_date,
+  processed_date,
+  file_record_count
+FROM batch
+WHERE status = "PROCESSED"
+```
+
+```{r}
+processed_batches <- 
+  processed_batches %>% 
+  mutate(time_difference = difftime(processed_date,
+                                    upload_date,
+                                    units = "days"))
+
+highest_records_process_time <- 
+  processed_batches %>% 
+  filter(processed_date <= (upload_date + days(21))) %>% 
+  filter(file_record_count == max(file_record_count))
+
+processed_batches_filtered <- 
+  processed_batches %>% 
+  filter(time_difference <= highest_records_process_time$time_difference &
+           file_record_count > 0)
+
+rm(highest_records_process_time)
+
+processed_batches_filtered$file_record_count <- 
+  processed_batches_filtered$file_record_count %>% 
+  as.numeric()
+
+processed_batches_filtered <- 
+  processed_batches_filtered %>% 
+  mutate(days_per_record = time_difference / file_record_count)
+
+days_per_record_mean <- 
+  mean(processed_batches_filtered$days_per_record) %>% 
+  as.numeric()
+
+days_per_record_median <- 
+  median(processed_batches_filtered$days_per_record) %>% 
+  as.numeric()
+```
+
+```{sql, connection=odbc_aws, output.var="batches_in_queue"}
+SELECT 
+  entity.name,
+  batch.upload_date,
+  batch.user_record_count
+FROM batch
+JOIN entity
+ON entity.id = batch.entity_id
+WHERE status = "UPLOADED"
+```
+
+```{r}
+total_uploaded_records <- 
+  sum(batches_in_queue$user_record_count) %>% 
+  as.numeric()
+
+mean_estimated_days_to_process <- 
+  days_per_record_mean * total_uploaded_records
+
+median_estimated_days_to_process <- 
+  days_per_record_median * total_uploaded_records
+```
+
+
+Well... that didn't work out like I thought it would. The estimated days are way too high...
+
+```{r}
+longest_time_in_queue <- 
+  difftime(now(), min(batches_in_queue$upload_date), units = "days") %>% 
+  round(digits = 1) %>% 
+  print()
+```
