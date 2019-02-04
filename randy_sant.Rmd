@@ -1,0 +1,108 @@
+---
+title: "Randy Sant"
+date: "January 2019"
+output: html_notebook
+---
+
+# Program Description
+
+Search Transparency for Randy Sant-related information. Possible vendor names include:
+
+* Randy Sant or Sant, Randy
+* Randy Sant Consulting or RS Consulting
+* Randy Sant Contract Management or RS Contract Management
+
+# Program
+
+```{r}
+library(odbc)
+library(scales)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+## Vendor Table
+
+```{sql, connection = odbc_aws, output.var = "randy_sant_vendor_names"}
+SELECT 
+  entity.name AS entity_name,
+  vendor.entity_id, 
+  vendor.name AS vendor_name, 
+  vendor.id   AS vendor_id
+FROM vendor
+JOIN entity
+ON entity.id = vendor.entity_id
+WHERE
+  vendor.name LIKE "randy sant"            OR
+  vendor.name LIKE "sant randy"            OR
+  vendor.name LIKE "sant, randy"           OR
+  vendor.name LIKE "randy sant consulting" OR
+  vendor.name LIKE "rs consulting"         OR
+  vendor.name LIKE "randy sant%"           OR
+  vendor.name LIKE "rs contract%"
+```
+
+## Vendor Summary Table
+
+```{r}
+query_vendor_summary_table <- function(vendor_id) {
+  # Query a vendor's information from the vendor_summary table.
+  
+  # Arguments:
+  # vendor_id: The vendor ID.
+
+  # Returns:
+  # A tibble containing the queried information from the Summary Table for the
+  # specified vendor.
+  
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT vendor_id, fiscal_year, type, total
+          FROM vendor_summary
+          WHERE vendor_id = ", vendor_id)) %>% 
+    as_tibble()
+}
+
+rs_summary <- 
+  map(randy_sant_vendor_names[["vendor_id"]],
+      query_vendor_summary_table) %>% 
+  bind_rows() %>% 
+  left_join(randy_sant_vendor_names,
+            by = "vendor_id") %>% 
+  mutate(dollar_total = dollar(total)) %>% 
+  select(entity_name, fiscal_year, vendor_name, dollar_total, total, 
+         transaction_type = type) %>% 
+  arrange(desc(total))
+
+entity_totals <- 
+  rs_summary %>% 
+  group_by(entity_name) %>% 
+  summarise(all_time_total = sum(total)) %>%
+  arrange(desc(all_time_total)) %>% 
+  mutate(all_time_total = dollar(all_time_total))
+
+all_entity_all_time_total <- 
+  sum(rs_summary$total) %>% 
+  dollar()
+
+entities_with_randy_as_vendor <- 
+  rs_summary %>% 
+  distinct(entity_name)
+```
+
+## Export
+
+```{r}
+write_csv(rs_summary, 
+          "randy_sants_summary.csv")
+write_csv(entity_totals,
+          "randy_sants_entity_totals.csv")
+```
+
+## Close
+
+```{r}
+dbDisconnect(odbc_aws)
+```
