@@ -1,0 +1,162 @@
+---
+title: "Cheyenne Larimer - Entity Totals for 2018"
+output: html_notebook
+---
+
+# Program Description
+
+Cheyenne Larimer sent me an email asking for a list of local governments that have less than $1 million in revenues or expenditures (whichever is greater) for the most recent fiscal year.
+
+# Program
+
+```{r}
+library(odbc)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+odbc_sf  <- dbConnect(odbc::odbc(), "Salesforce")
+```
+
+## Transparency
+
+```{sql, connection=odbc_aws, output.var=entity_info}
+SELECT name, id, govt_lvl
+FROM entity
+```
+
+```{sql, connection=odbc_aws, output.var=contact_info}
+SELECT 
+  entity.id      AS transparency_id,
+  contact.name   AS contact_name,
+  contact.email  AS contact_email,
+  contact.phone  AS contact_phone,
+  contact.street AS street_address,
+  contact.city   AS city,
+  contact.zip    AS zip,
+  contact.state  AS state
+FROM contact
+JOIN entity
+ON entity.primary_contact_id = contact.id
+WHERE entity.id IN (
+  SELECT id
+  FROM entity
+  WHERE govt_lvl IN (
+    "CITY",
+    "COUNTY",
+    "HIGHER EDUCATION",
+    "INTERLOCAL",
+    "LOCAL DISTRICTS",
+    "SERVICE DISTRICTS",
+    "INDEPENDENT",
+    "HOUSING AUTHORITIES"))
+```
+
+```{sql, connection=odbc_aws, output.var=total_exp}
+SELECT 
+  entity.name,
+  summary.entity_id,
+  entity.govt_lvl,
+  summary.total
+FROM summary
+JOIN entity
+ON entity.id = summary.entity_id
+WHERE summary.fiscal_year = 2018
+AND summary.trx_type = 1
+AND summary.entity_id IN (
+  SELECT id
+  FROM entity
+  WHERE govt_lvl IN (
+    "CITY",
+    "COUNTY",
+    "HIGHER EDUCATION",
+    "INTERLOCAL",
+    "LOCAL DISTRICTS",
+    "SERVICE DISTRICTS",
+    "INDEPENDENT",
+    "HOUSING AUTHORITIES"))
+```
+
+```{sql, connection=odbc_aws, output.var=total_rev}
+SELECT 
+  entity.name,
+  summary.entity_id,
+  entity.govt_lvl,
+  summary.total
+FROM summary
+JOIN entity
+ON entity.id = summary.entity_id
+WHERE summary.fiscal_year = 2018
+AND summary.trx_type = 2
+AND summary.entity_id IN (
+  SELECT id
+  FROM entity
+  WHERE govt_lvl IN (
+    "CITY",
+    "COUNTY",
+    "HIGHER EDUCATION",
+    "INTERLOCAL",
+    "LOCAL DISTRICTS",
+    "SERVICE DISTRICTS",
+    "INDEPENDENT",
+    "HOUSING AUTHORITIES"))
+```
+
+```{r}
+total_exp <-  
+  total_exp %>%
+  group_by(name) %>% 
+  summarize(total_exp = sum(total)) %>% 
+  left_join(entity_info,
+            by = "name") %>% 
+  select(name, transparency_id = id, govt_lvl, total_exp)
+
+total_rev <-  
+  total_rev %>%
+  group_by(name) %>% 
+  summarize(total_rev = sum(total)) %>% 
+  left_join(entity_info,
+            by = "name") %>% 
+  select(name, transparency_id = id, govt_lvl, total_rev)
+
+entity_2018_totals <- 
+  total_exp %>% 
+  left_join(total_rev,
+            by = "transparency_id") %>% 
+  left_join(contact_info,
+            by = "transparency_id") %>% 
+  select(entity_name = name.x, transparency_id, govt_lvl = govt_lvl.x,
+         total_exp, total_rev, contact_name, contact_email, contact_phone,
+         street_address, city, zip, state)
+```
+
+## Salesforce
+
+```{sql, connection=odbc_sf, output.var=sf_report_type_and_contact_info}
+SELECT 
+  Reports__c.Account__c,
+  Account.Name,
+  Reports__c.Report_Type__c,
+  Reports__c.Entity_Type__c,
+  Reports__c.CreatedDate
+FROM Reports__c
+JOIN Account
+ON Account.Id = Reports__c.Account__c
+WHERE 
+  Reports__c.Entity_Type__c = "Local and Special Service District" OR
+  Reports__c.Entity_Type__c = "City" OR
+  Reports__c.Entity_Type__c = "Town" OR
+  Reports__c.Entity_Type__c =  "Interlocal"
+```
+
+## Export
+
+```{r}
+write_csv(entity_2018_totals,
+          "entity_2018_totals.csv")
+```
+
+## Close
+
+```{r}
+dbDisconnect(odbc_aws)
+```
