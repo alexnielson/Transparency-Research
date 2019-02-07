@@ -310,7 +310,7 @@ WHERE id IN (
 
 # Identify meaningful levels of data:
 
-Several governments report non-meaninful levels of data (e.g., the description 
+Several governments report non-meaningful levels of data (e.g., the description 
 is "0"). The following pieces of code help determine how deep governments are 
 reporting meaningful data.
 
