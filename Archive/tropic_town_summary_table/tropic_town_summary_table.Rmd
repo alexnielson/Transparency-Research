@@ -1,0 +1,149 @@
+---
+title: "Tropic Town & the Summary Table"
+author: "Michael Jensen"
+date: "January 2019"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+# Background
+
+On February 6, 2019, Cassie Chynoweth, the treasurer for Tropic Town, called me to ask about a notice she received from the State Auditor's Office. The notice stated the town was missing the 2018 employee compensation report, but she thought she had uploaded all the required Transparency reports.
+
+I queried the AWS Batch and Summary tables to determine whether the information had been submitted, and did not see a file uploaded but unprocessed or an employee compensation file for 2018. What I did see in the AWS Summary Table were eight employee compensation files, all for FY 2017, totalling to $424,779 (see screenshot below). 
+
+```{r}
+knitr::include_graphics('20190206_aws_tropic_w2.png')
+```
+
+Almost $425,000 for employee compensation during 2017 seemed high for a small town like Tropic, so I called Cassie to ask whether that seemed accurate. She was surprised at the amount. I checked the Transparency website, which showed a different total for employee compensation in 2017: \$106,194 (see screenshot below).
+
+```{r}
+knitr::include_graphics('20190206_upfw_tropic_w2_2017.png')
+```
+
+\$106,194 seemed more reasonable. Interestingly, the eight records shown in the earlier screenshot total to \$106,194 if separated into four groups (the first two records, the third record, the fourth and fifth records, and the final three records). It seems that there may be some duplication represented in the Summary Table. If so, the Summary Table is not a reliable source of information.
+
+**Research Question**
+
+What explains the discrepancy between the 2107 employee compensation totals as presented on the Transparency website and as queried from the AWS Summary Table?
+
+# Research
+
+```{r}
+library(lubridate)
+library(odbc)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+
+t_id <- 1057 #Tropic Town's Transparency ID
+```
+
+```{r}
+batch_table_status_not_processed <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT
+            id,
+            upload_date,
+            processed_date,
+            begin_txn_date,
+            end_txn_date,
+            status,
+            status_message
+          FROM batch
+          WHERE entity_id = ", t_id, "
+          AND status <> 'PROCESSED'
+          ORDER BY upload_date DESC"))
+```
+
+```{r}
+transaction_table <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT
+            fiscal_year,
+            posting_date,
+            type,
+            amount,
+            batch_id,
+            description
+          FROM transaction
+          WHERE batch_id IN (
+            SELECT id
+            FROM batch
+            WHERE entity_id = ", t_id, ")"))
+
+transaction_table_distinct_fy <- 
+  transaction_table %>% 
+  filter(type == 3) %>% 
+  distinct(fiscal_year)
+
+transaction_table_distinct_years <- 
+  transaction_table %>% 
+  filter(type == 3) %>% 
+  distinct(year(posting_date))
+
+transaction_table_distinct_w2_descriptions <- 
+  transaction_table %>% 
+  filter(type == 3) %>% 
+  distinct(description)
+
+transaction_table_by_year_total_w2 <- 
+  transaction_table %>%
+  filter(type == 3) %>% 
+  group_by(fiscal_year) %>% 
+  summarise(annual_total = sum(amount))
+```
+
+```{r}
+summary_table <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT 
+            id,
+            fiscal_year,
+            total,
+            count,
+            trx_group_id
+          FROM summary
+          WHERE summary.entity_id = ", t_id, "
+          AND summary.trx_type = '3'"))
+
+transaction_group_table <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT *
+          FROM transaction_group"))
+  
+summary_table <- 
+  summary_table %>% 
+  left_join(transaction_group_table,
+            by = c("trx_group_id" = "id")) %>% 
+  left_join(transaction_group_table,
+            by = c("parent_id" = "id")) %>% 
+  select(id, fiscal_year, total, count, classification_1 = name.y,
+         classification_2 = name.x, type_1 = type.y, type_2 = type.x)
+
+summary_table_by_year_total <- 
+  summary_table %>%
+  group_by(fiscal_year) %>% 
+  summarise(total_compensation = sum(total))
+```
+
+The total from the Transaction Table is \$106,194 (which matches what is displayed on the Transparency website) and the total from the Summary Table is \$424,779. The amount in the Summary Table is exactly four time the amount in the Transaction Table.
+
+# Conclusion
+
+After thinking about the information in the Summary Table, and noticing that the amount in the Summary Table is four times that in the Transaction Table, I concluded that the Summary Table is for summarizing financial information by organization, category, and fund. **The Summary Table is not meant to summarize information by year.**
+
+# Close
+
+```{r}
+dbDisconnect(odbc_aws)
+```
