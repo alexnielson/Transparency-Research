@@ -1,45 +1,40 @@
 ---
-title: "Browse an Entity's Transparency Data"
+title: "Browse AWS Transparency Data"
 author: "Michael Jensen"
-date: "November 2018"
+date: "January 2019"
 output: html_notebook
 ---
-# VERIFY THE CHANGES TO THE DATABASE ARE REFLECTED IN THIS CODE BEFORE USING IT TO MAKE DECISIONS
-# Program Description
-
-Browse a local government's Transparency data.
-
-# Program
-
-## Packages, Data Connection, and Input
+# Packages, Data Connection, and Input
 
 ```{r}
 library(odbc)
+library(scales)
 library(tidyverse)
 
 odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
 ```
 
-```{r}
-names_and_ids <- 
-  dbGetQuery(
-    odbc_aws,
-    paste("
-          SELECT name, id
-          FROM entity")) %>% 
-  arrange(name)
-```
-
-```{r}
-t_id <- 1
-
-rm(names_and_ids)
-```
+# Browse Transparency Data
 
 ## Entity Table
 
 ```{sql, connection=odbc_aws, output.var="entity_table"}
-SELECT * 
+SELECT name, id
+FROM entity
+```
+
+```{r}
+t_id <- 619
+
+rm(entity_table)
+```
+
+```{sql, connection=odbc_aws, output.var="entity_table"}
+SELECT 
+  name,
+  govt_lvl,
+  fiscal_period,
+  payroll_period
 FROM entity
 WHERE id = ?t_id
 ```
@@ -62,7 +57,18 @@ WHERE entity_id = ?t_id
 ORDER BY upload_date DESC
 ```
 
+```{sql, connection=odbc_aws, output.var="batch_table_status_options"}
+SELECT DISTINCT status
+FROM batch
+```
+
 ## Transaction Tables
+
+**Remember**
+
+Transactions for the current and previous four fiscal years are stored in the 
+transaction table. The remaining years are stored in separate tables (e.g., 
+transaction_2009).
 
 ```{sql, connection=odbc_aws, output.var="transaction_table"}
 SELECT *
@@ -73,12 +79,6 @@ WHERE batch_id IN (
   WHERE entity_id = ?t_id)
 ```
 
-```{sql, connection=odbc_aws, output.var="batch_transactions"}
-SELECT *
-FROM transaction
-WHERE batch_id = 55326
-```
-
 ## Transaction Group Table
 
 ```{sql, connection=odbc_aws, output.var="transaction_group"}
@@ -86,7 +86,27 @@ SELECT *
 FROM transaction_group
 ```
 
+## Summary Table
+
+**Remember**
+
+The information in the Summary Table is for summarizing transactions by org, 
+cat, fund, program, and function. It is not for summarizing data by fiscal year
+(do that using the Transaction Table).
+
+```{sql, connection=odbc_aws, output.var="summary_table"}
+SELECT *
+FROM summary
+WHERE entity_id = ?t_id
+```
+
 ## Vendor Table
+
+**Remember**
+
+The Vendor Table contains all vendors uploaded to Transparency, which means that
+it contains vendors that have been deleted. The Vendor Summary Table contains 
+current information.
 
 ```{sql, connection=odbc_aws, output.var="vendor_table"}
 SELECT *
@@ -100,170 +120,109 @@ WHERE entity_id = ?t_id
 SELECT *
 FROM vendor_summary
 WHERE entity_id = ?t_id
-AND type = 3
 ```
 
-## Close
+# Browse Transparency Metadata
 
-```{r}
-dbDisconnect(odbc_aws)
-rm(list = ls())
+## Table Row Counts
+
+```{sql, connection = odbc_aws, output.var = "count_batch"}
+SELECT COUNT(*) FROM batch
 ```
 
-# Workspace
+```{sql, connection = odbc_aws, output.var = "count_entity"}
+SELECT COUNT(*)
+FROM entity
+```
 
-```{sql, connection=odbc_aws, output.var="fy_2018_transactions"}
-SELECT *
-FROM transaction
+```{sql, connection = odbc_aws, output.var = "count_transactions"}
+SELECT COUNT(*) FROM transaction
+```
+
+```{sql, connection = odbc_aws, output.var = "count_deleted_batches"}
+SELECT COUNT(*) FROM batch WHERE status = 'DELETED'
+```
+
+```{sql, connection = odbc_aws, output.var = "count_deleted_transactions"}
+SELECT COUNT(*) 
+FROM transaction 
 WHERE batch_id IN (
   SELECT id
   FROM batch
-  WHERE entity_id = ?t_id)
-AND fiscal_year = 2018
-```
-
-```{sql, connection=odbc_aws, output.var="transaction_group"}
-SELECT id, name
-FROM transaction_group
-```
-
-```{sql, connection=odbc_aws, output.var="vendor_table"}
-SELECT id, name
-FROM vendor
-WHERE entity_id = ?t_id
+  WHERE status = 'DELETED')
 ```
 
 ```{r}
-fy_2018_transactions <- 
-  fy_2018_transactions %>% 
-  select(id, posting_date, amount, entity_trans_id, description, type, 
-         org1, org2, org3, cat1, cat2, fund1, fund2, vendor_id, account_number)
+count_batch                <- as.numeric(count_batch$`COUNT(*)`)
+count_entity               <- as.numeric(count_entity$`COUNT(*)`)
+count_transactions         <- as.numeric(count_transactions$`COUNT(*)`)
+count_deleted_batches      <- as.numeric(count_deleted_batches$`COUNT(*)`)
+count_deleted_transactions <-
+  as.numeric(count_deleted_transactions$`COUNT(*)`)
+```
 
-colnames(fy_2018_transactions)[[15]] <- "uniform_chart_of_accounts_number"
+## Information Schema Tables
 
-fy_2018_transactions$id <- 
-  fy_2018_transactions$id %>% 
-  as.integer()
+### Table Names and Information
 
-fy_2018_transactions$org1 <- 
-  fy_2018_transactions$org1 %>% 
-  as.integer()
+```{sql, connection = odbc_aws, output.var = "info_schema_tables"}
+SELECT *
+FROM information_schema.tables
+```
 
-fy_2018_transactions$org2 <- 
-  fy_2018_transactions$org2 %>% 
-  as.integer()
+### Data Size
 
-fy_2018_transactions$org3 <- 
-  fy_2018_transactions$org3 %>% 
-  as.integer()
-
-fy_2018_transactions$cat1 <- 
-  fy_2018_transactions$cat1 %>% 
-  as.integer()
-
-fy_2018_transactions$cat2 <- 
-  fy_2018_transactions$cat2 %>% 
-  as.integer()
-
-fy_2018_transactions$fund1 <- 
-  fy_2018_transactions$fund1 %>% 
-  as.integer()
-
-fy_2018_transactions$fund2 <- 
-  fy_2018_transactions$fund2 %>% 
-  as.integer()
-
-fy_2018_transactions$vendor_id <- 
-  fy_2018_transactions$vendor_id %>% 
-  as.integer()
-
-transaction_group$id <- 
-  transaction_group$id %>% 
-  as.integer()
-
-vendor_table$id <- 
-  vendor_table$id %>% 
-  as.integer()
+```{sql, connection = odbc_aws, output.var = "info_schema_size"}
+SELECT table_schema AS 'Database', 
+       table_name AS 'Table',
+       ROUND(((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024), 2) AS 'Size in MB'
+FROM information_schema.tables
+ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC
 ```
 
 ```{r}
-fy_2018_transactions <- 
-  fy_2018_transactions %>% 
-  left_join(transaction_group,
-            by = c("org1" = "id")) %>% 
-  select(-"org1")
-
-colnames(fy_2018_transactions)[[15]] <- "organization_1"
-
-fy_2018_transactions <- 
-  fy_2018_transactions %>% 
-  left_join(transaction_group,
-            by = c("org2" = "id")) %>% 
-  select(-"org2")
-
-colnames(fy_2018_transactions)[[15]] <- "organization_2"
-
-fy_2018_transactions <- 
-  fy_2018_transactions %>% 
-  left_join(transaction_group,
-            by = c("org3" = "id")) %>% 
-  select(-"org3")
-
-colnames(fy_2018_transactions)[[15]] <- "organization_3"
-
-fy_2018_transactions <- 
-  fy_2018_transactions %>% 
-  left_join(transaction_group,
-            by = c("cat1" = "id")) %>% 
-  select(-"cat1")
-
-colnames(fy_2018_transactions)[[15]] <- "category_1"
-
-fy_2018_transactions <- 
-  fy_2018_transactions %>% 
-  left_join(transaction_group,
-            by = c("cat2" = "id")) %>% 
-  select(-"cat2")
-
-colnames(fy_2018_transactions)[[15]] <- "category_2"
-
-fy_2018_transactions <- 
-  fy_2018_transactions %>% 
-  left_join(transaction_group,
-            by = c("fund1" = "id")) %>% 
-  select(-"fund1")
-
-colnames(fy_2018_transactions)[[15]] <- "fund_1"
-
-fy_2018_transactions <- 
-  fy_2018_transactions %>% 
-  left_join(transaction_group,
-            by = c("fund2" = "id")) %>% 
-  select(-"fund2")
-
-colnames(fy_2018_transactions)[[15]] <- "fund_2"
-
-fy_2018_transactions <- 
-  fy_2018_transactions %>% 
-  left_join(vendor_table,
-            by = c("vendor_id" = "id")) %>% 
-  select(-"vendor_id")
-
-colnames(fy_2018_transactions)[[15]] <- "vendor"
+data_size_in_Mb <- round(sum(info_schema_size$`Size in MB`))
 ```
 
-```{r}
-fy_2018_transactions <-
-  fy_2018_transactions %>% 
-  mutate(transaction_type = if_else(type == 1, "expense", "revenue")) %>% 
-  select(-type) %>% 
-  select(id, transaction_type, posting_date, amount, entity_trans_id,
-         description, vendor, organization_1, organization_2, organization_3, 
-         category_1, category_2, fund_1, fund_2, 
-         uniform_chart_of_accounts_number)
+## Indexes
+
+Create an index (permission to do so is currently denied):
+
+```{sql, connection = odbc_aws}
+CREATE INDEX transaction_batchid
+ON transaction (batch_id)
 ```
 
+View indexed variables:
+
+```{sql, connection = odbc_aws, output.var = "indexed_variables"}
+SELECT DISTINCT table_name, index_name
+FROM information_schema.statistics
+WHERE table_schema = 'transparency'
+```
+
+```{sql, connection = odbc_aws, output.var = "index_batch"}
+SHOW INDEX FROM batch
+```
+
+```{sql, connection = odbc_aws, output.var = "index_entity"}
+SHOW INDEX FROM entity
+```
+
+```{sql, connection = odbc_aws, output.var = "index_transaction"}
+SHOW INDEX FROM transaction
+```
+
+## R Object Size
+
 ```{r}
-fy_2018_transactions %>% 
-  write_csv("C:/Users/mjensen1/Desktop/Utah_County_2018.csv")
+entity_transactions %>% 
+  object.size() %>% 
+  print(units = "auto")
+```
+
+# Close
+
+```{r}
+dbDisconnect(odbc_aws)
 ```
