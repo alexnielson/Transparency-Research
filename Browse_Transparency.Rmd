@@ -7,6 +7,7 @@ output: html_notebook
 # Packages, Data Connection, and Input
 
 ```{r}
+library(lubridate)
 library(odbc)
 library(scales)
 library(tidyverse)
@@ -219,6 +220,94 @@ SHOW INDEX FROM transaction
 entity_transactions %>% 
   object.size() %>% 
   print(units = "auto")
+```
+
+# Troubleshoot an Entity's Data
+
+```{sql, connection=odbc_aws, output.var="entity_table"}
+SELECT 
+  entity.name   AS entity_name, 
+  entity.id     AS transparency_id,
+  entity.govt_lvl,
+  entity.fiscal_period,
+  entity.payroll_period,
+  contact.name  AS contact_name,
+  contact.email AS contact_email, 
+  contact.phone AS contact_phone
+FROM entity
+JOIN contact
+ON entity.primary_contact_id = contact.id
+```
+
+```{r}
+t_id <- 619
+
+entity_table$transparency_id <- 
+  entity_table$transparency_id %>% as.numeric()
+
+entity_info <- 
+  entity_table %>%
+  filter(transparency_id == t_id)
+```
+
+```{sql, connection=odbc_aws, output.var="batch_table"}
+SELECT 
+  id,
+  upload_date,
+  processed_date,
+  file_record_count,
+  file_total_amount,
+  begin_txn_date,
+  end_txn_date,
+  status,
+  status_message
+FROM batch
+WHERE entity_id = ?t_id
+ORDER BY upload_date DESC
+```
+
+```{sql, connection=odbc_aws, output.var="transaction_table"}
+SELECT 
+  posting_date,
+  amount,
+  batch_id,
+  fiscal_year,
+  description,
+  type
+FROM transaction
+WHERE batch_id IN (
+  SELECT id
+  FROM batch
+  WHERE entity_id = ?t_id)
+```
+
+```{r}
+posting_dates_exp <- 
+  transaction_table %>% 
+  filter(type == 1) %>% 
+  .$posting_date %>% 
+  floor_date() %>% 
+  unique() %>% 
+  as.character() %>% 
+  as.matrix()
+
+posting_dates_rev <- 
+  transaction_table %>% 
+  filter(type == 2) %>% 
+  .$posting_date %>% 
+  floor_date() %>% 
+  unique() %>% 
+  as.character() %>% 
+  as.matrix()
+
+posting_dates_w2 <- 
+  transaction_table %>% 
+  filter(type == 3) %>% 
+  .$posting_date %>% 
+  floor_date() %>% 
+  unique() %>% 
+  as.character() %>% 
+  as.matrix()
 ```
 
 # Close
