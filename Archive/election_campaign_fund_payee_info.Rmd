@@ -6,15 +6,27 @@ output: html_notebook
 ***
 ### Introduction
 
-The purpose of this report is to determine whether the payees for Election Campaign Fund contributions are reported to Transparency.
+The purpose of this report is to determine whether the payees for Election 
+Campaign Fund contributions are reported to Transparency.
 
 **Background**
 
-Utah's Individual Income Tax Contribution Act created the opportunity for a taxpayer to designate on his or her individual income tax return a \$2 contribution to a registered political party (*U.C. 59-10-1311*). The contribution is "free" from the taxpayer's perspective, as choosing to make a contribution does not affect the taxpayer's tax refund. Instead, the \$2 contribution is transferred from the General Fund to the Election Campaign Fund. The Office of the State Treasurer is responsible for distributing the contributions in the Election Campaign Fund to the appropriate political party. Contributions are distributed almost monthly.
+Utah's Individual Income Tax Contribution Act created the opportunity for a 
+taxpayer to designate on his or her individual income tax return a \$2 
+contribution to a registered political party (*U.C. 59-10-1311*). The 
+contribution is "free" from the taxpayer's perspective, as choosing to make a contribution does not affect the taxpayer's tax refund. Instead, the \$2 contribution is transferred from the General Fund to the Election Campaign Fund.
+The Office of the State Treasurer is responsible for distributing the 
+contributions in the Election Campaign Fund to the appropriate political party. Contributions are distributed almost monthly.
 
-From July 2008 to July 2018, the State Treasurer's Office reported contributions distributed to the political parties as a lump sum, which meant that Transparency could not be used to determine the amounts distributed to each political party. As the State Auditor is responsible for monitoring entities that receive public monies (above a certain threshold, in the case of political parties), he requested that the State Treasurer's Office report the actual transaction to Transparency rather than a summary transaction. Doing so would allow him to use the Transparency data to determine which political parties he is responsible to monitor, if any.
+From July 2008 to July 2018, the State Treasurer's Office reported contributions distributed to the political parties as a lump sum, which meant that 
+Transparency could not be used to determine the amounts distributed to each political party. As the State Auditor is responsible for monitoring entities 
+that receive public monies (above a certain threshold, in the case of political parties), he requested that the State Treasurer's Office report the actual transaction to Transparency rather than a summary transaction. Doing so would 
+allow him to use the Transparency data to determine which political parties he 
+is responsible to monitor, if any.
 
-In July 2018, Jason Nielson, Finance Director for the State Treasurer's Office, agreed to change the way the Office reported Election Campaign Contributions. This program is meant to test whether the change carries through to Transparency.
+In July 2018, Jason Nielson, Finance Director for the State Treasurer's Office, agreed to change the way the Office reported Election Campaign Contributions. 
+This program is meant to test whether the change carries through to 
+Transparency.
 
 ***
 ### Analysis of Transparency
