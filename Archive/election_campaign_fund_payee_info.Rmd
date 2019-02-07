@@ -14,17 +14,25 @@ Campaign Fund contributions are reported to Transparency.
 Utah's Individual Income Tax Contribution Act created the opportunity for a 
 taxpayer to designate on his or her individual income tax return a \$2 
 contribution to a registered political party (*U.C. 59-10-1311*). The 
-contribution is "free" from the taxpayer's perspective, as choosing to make a contribution does not affect the taxpayer's tax refund. Instead, the \$2 contribution is transferred from the General Fund to the Election Campaign Fund.
+contribution is "free" from the taxpayer's perspective, as choosing to make a 
+contribution does not affect the taxpayer's tax refund. Instead, the \$2 
+contribution is transferred from the General Fund to the Election Campaign Fund.
 The Office of the State Treasurer is responsible for distributing the 
-contributions in the Election Campaign Fund to the appropriate political party. Contributions are distributed almost monthly.
+contributions in the Election Campaign Fund to the appropriate political party. 
+Contributions are distributed almost monthly.
 
-From July 2008 to July 2018, the State Treasurer's Office reported contributions distributed to the political parties as a lump sum, which meant that 
-Transparency could not be used to determine the amounts distributed to each political party. As the State Auditor is responsible for monitoring entities 
-that receive public monies (above a certain threshold, in the case of political parties), he requested that the State Treasurer's Office report the actual transaction to Transparency rather than a summary transaction. Doing so would 
+From July 2008 to July 2018, the State Treasurer's Office reported contributions 
+distributed to the political parties as a lump sum, which meant that 
+Transparency could not be used to determine the amounts distributed to each 
+political party. As the State Auditor is responsible for monitoring entities 
+that receive public monies (above a certain threshold, in the case of political 
+parties), he requested that the State Treasurer's Office report the actual 
+transaction to Transparency rather than a summary transaction. Doing so would 
 allow him to use the Transparency data to determine which political parties he 
 is responsible to monitor, if any.
 
-In July 2018, Jason Nielson, Finance Director for the State Treasurer's Office, agreed to change the way the Office reported Election Campaign Contributions. 
+In July 2018, Jason Nielson, Finance Director for the State Treasurer's Office, 
+agreed to change the way the Office reported Election Campaign Contributions. 
 This program is meant to test whether the change carries through to 
 Transparency.
 
@@ -80,7 +88,11 @@ ecf_contributions %>%
 
 ### Analysis of State Data Warehouse
 
-Beginning in July 2018, the State Treasurer's Office began reporting the amounts paid to each political party, as shown in the code below. Thus, if the amounts paid to the political parties does not appear in Transparency, there is a problem somewhere in the process of uploading the State's FINET data to Transparency.
+Beginning in July 2018, the State Treasurer's Office began reporting the amounts
+paid to each political party, as shown in the code below. Thus, if the amounts 
+paid to the political parties does not appear in Transparency, there is a 
+problem somewhere in the process of uploading the State's FINET data to 
+Transparency.
 
 ```{r}
 odbc_dw  <- dbConnect(odbc::odbc(), "StateDW", password = "DW1234")
@@ -93,7 +105,10 @@ SELECT *
 FROM StateDW.dbo.Fund
 ```
 
-Use the Account_Type Table to identify the account_type for expenditures (*in the State's accounting system, "Expenditure" rather than "Expense" is used to describe an outflow of money. "Expense" is used to account for depreciation of assets*):
+Use the Account_Type Table to identify the account_type for expenditures (*in 
+the State's accounting system, "Expenditure" rather than "Expense" is used to 
+describe an outflow of money. "Expense" is used to account for depreciation of 
+assets*):
 
 ```{sql, connection=odbc_dw, output.var=account_type_table}
 SELECT *
@@ -127,15 +142,37 @@ accounting_journal_table %>%
 
 ### Conclusions
 
-1) As of July 2018, the State Treasurer's Office is reporting the names of the political parties that receive Election Campaign Fund contributions.
+1) As of July 2018, the State Treasurer's Office is reporting the names of the 
+political parties that receive Election Campaign Fund contributions.
 
-2) As of November 2018, the names of the political parties are still not being reported to Transparency. During a discussion with John Draney, I discovered that the State Treasurer's Office reported the names of the political parties to FINET, but did so in the "Legal_Name" field rather than the vendor name field that is exported to Transparency. John Draney said the problem would be fixed by someone named Rony (December 26, 2018 update: political party names now appear in the Transparency database).
+2) As of November 2018, the names of the political parties are still not being 
+reported to Transparency. During a discussion with John Draney, I discovered 
+that the State Treasurer's Office reported the names of the political parties to
+FINET, but did so in the "Legal_Name" field rather than the vendor name field 
+that is exported to Transparency. John Draney said the problem would be fixed by 
+someone named Rony (December 26, 2018 update: political party names now appear 
+in the Transparency database).
 
-3) During a phone call with Jason Nielson on December 19, 2018, he said that the State Treasurer's Office reports the names of the political parties in the Legal_Name field because of the unique nature of the way contributions from the Election Campaign Fund are paid to political parties (the political parties are not considered vendors in FINET, and therefore have no vendor ID.)
+3) During a phone call with Jason Nielson on December 19, 2018, he said that the 
+State Treasurer's Office reports the names of the political parties in the 
+Legal_Name field because of the unique nature of the way contributions from the 
+Election Campaign Fund are paid to political parties (the political parties are 
+not considered vendors in FINET, and therefore have no vendor ID.)
 
-4) During the July 2018 meeting, Jason Nielson stated that the political parties aren't reported to FINET (and therefore to Transparency) because of the nature of the way the money is paid to political parties. The money does not flow from FINET, but rather the State Treasurer's Office sends the contributions through ACH and reports the transactions using a journal voucher.
+4) During the July 2018 meeting, Jason Nielson stated that the political parties 
+aren't reported to FINET (and therefore to Transparency) because of the nature 
+of the way the money is paid to political parties. The money does not flow from 
+FINET, but rather the State Treasurer's Office sends the contributions through 
+ACH and reports the transactions using a journal voucher.
 
-The *State of Utah Transparency Website File Layout* description for what to report in the Payee/Customer/Vendor name field, however, states that "Not Applicable" should be reported as the payee/customer/vendor name when the transaction is a journal voucher. Therefore, the State Treasurer's Office was reporting the transaction as directed. **If the requirement to post journal voucher transactions with a payee/customer/vendor name of "Not Applicable" does not reflect the intent of the Legislature or Transparency Advisory Board, then the description for this field should be changed.**
+The *State of Utah Transparency Website File Layout* description for what to 
+report in the Payee/Customer/Vendor name field, however, states that "Not 
+Applicable" should be reported as the payee/customer/vendor name when the 
+transaction is a journal voucher. Therefore, the State Treasurer's Office was 
+reporting the transaction as directed. **If the requirement to post journal 
+voucher transactions with a payee/customer/vendor name of "Not Applicable" does 
+not reflect the intent of the Legislature or Transparency Advisory Board, then 
+the description for this field should be changed.**
 
 ### Close
 
