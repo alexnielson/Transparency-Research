@@ -1,0 +1,229 @@
+---
+title: "Request from Special Projects: Exp/Rev Totals and Contact Info"
+output: html_notebook
+---
+# Program Description
+
+The Special Projects Division requested the names and contact information of 
+local government officials from cities, towns, interlocals, local districts, and 
+special service districts with annual revenues or expenditures of less than $1 
+million (whichever is greater).
+
+# Program
+
+```{r}
+library(odbc)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+odbc_sf  <- dbConnect(odbc::odbc(), "Salesforce")
+```
+
+## Transparency
+
+```{sql, connection=odbc_aws, output.var=aws_entity_table}
+SELECT 
+  name, 
+  id       AS transparency_id,
+  govt_lvl AS govt_type
+FROM entity
+```
+
+```{sql, connection=odbc_aws, output.var=aws_2017_exp}
+SELECT
+  entity.name          AS entity_name,
+  entity.id            AS transparency_id,
+  transaction.amount   AS amount
+FROM transaction
+JOIN batch
+ON batch.id = transaction.batch_id
+JOIN entity
+ON batch.entity_id = entity.id
+WHERE 
+  transaction.fiscal_year = 2017
+AND
+  transaction.type = 1
+AND
+  transaction.batch_id IN (
+    SELECT id
+    FROM batch
+    WHERE
+      entity_id IN (
+        SELECT id
+        FROM entity
+        WHERE govt_lvl IN (
+          'CITY',
+          'INTERLOCAL',
+          'LOCAL DISTRICTS',
+          'SERVICE DISTRICTS')))
+```
+
+```{sql, connection=odbc_aws, output.var=aws_2017_rev}
+SELECT
+  entity.name          AS entity_name,
+  entity.id            AS transparency_id,
+  entity.govt_lvl      AS govt_type,
+  transaction.amount   AS amount
+FROM transaction
+JOIN batch
+ON batch.id = transaction.batch_id
+JOIN entity
+ON batch.entity_id = entity.id
+WHERE 
+  transaction.fiscal_year = 2017
+AND
+  transaction.type = 2
+AND
+  transaction.batch_id IN (
+    SELECT id
+    FROM batch
+    WHERE
+      entity_id IN (
+        SELECT id
+        FROM entity
+        WHERE govt_lvl IN (
+          'CITY',
+          'INTERLOCAL',
+          'LOCAL DISTRICTS',
+          'SERVICE DISTRICTS')))
+```
+
+```{r}
+aws_2017_exp_total <-  
+  aws_2017_exp %>%
+  group_by(transparency_id) %>% 
+  summarize(total_exp = sum(amount)) %>% 
+  left_join(aws_entity_table,
+            by = "transparency_id") %>% 
+  select(name, transparency_id, govt_type, total_exp)
+
+aws_2017_rev_total <-  
+  aws_2017_rev %>%
+  group_by(transparency_id) %>% 
+  summarize(total_rev = sum(amount)) %>% 
+  left_join(aws_entity_table,
+            by = "transparency_id") %>% 
+  select(name, transparency_id, govt_type, total_rev)
+
+aws_2017_entity_totals <- 
+  aws_2017_exp_total %>% 
+  left_join(aws_2017_rev_total,
+            by = "transparency_id") %>% 
+  select(entity_name = name.x, transparency_id, govt_type = govt_type.x,
+         total_exp, total_rev)
+
+aws_2017_entity_totals$transparency_id <- 
+  aws_2017_entity_totals$transparency_id %>% 
+  as.numeric()
+
+rm(aws_entity_table, aws_2017_exp, aws_2017_rev, aws_2017_exp_total, 
+   aws_2017_rev_total)
+```
+
+## Salesforce
+
+```{sql, connection=odbc_sf, output.var=sf_contact_info}
+SELECT
+  Account.Name               AS entity_name,
+  Account.Transparency_ID__c AS transparency_id,
+  Account.Phone              AS entity_phone,
+  Account.Phone              AS contact_phone,
+  Contact.Email              AS contact_email,
+  Contact.Title              AS contact_title,
+  Contact.Position__c        AS contact_position,
+  Contact.FirstName          AS contact_first_name,
+  Contact.LastName           AS contact_last_name
+FROM Contact
+JOIN Account
+ON Contact.AccountId = Account.Id
+WHERE 
+  Contact.IsDeactivated__c = FALSE
+AND 
+  Account.RecordTypeId IN (
+    SELECT RecordType.Id
+    FROM RecordType
+    WHERE RecordType.DeveloperName IN (
+      'City',
+      'Interlocal',
+      'Local_and_Special_Service_District',
+      'Town'))
+```
+
+```{r}
+sf_contact_info$contact_first_name <- 
+  sf_contact_info$contact_first_name %>% 
+  str_to_lower() %>% 
+  str_to_title()
+
+sf_contact_info$contact_last_name <- 
+  sf_contact_info$contact_last_name %>% 
+  str_to_lower() %>% 
+  str_to_title()
+
+sf_contact_info$contact_full_name <- 
+  str_c(sf_contact_info$contact_first_name,
+        sf_contact_info$contact_last_name,
+        sep = " ")
+
+sf_contact_info$entity_phone <- 
+  sf_contact_info$entity_phone %>% 
+  str_remove("\\(")
+
+sf_contact_info$entity_phone <- 
+  sf_contact_info$entity_phone %>% 
+  str_remove("\\)")
+
+sf_contact_info$entity_phone <- 
+  sf_contact_info$entity_phone %>% 
+  str_replace(" ", "-")
+
+sf_contact_info$contact_phone <- 
+  sf_contact_info$entity_phone %>% 
+  str_remove("\\(")
+
+sf_contact_info$contact_phone <- 
+  sf_contact_info$entity_phone %>% 
+  str_remove("\\)")
+
+sf_contact_info$contact_phone <- 
+  sf_contact_info$entity_phone %>% 
+  str_replace(" ", "-")
+```
+
+## Reports
+
+```{r}
+contact_info_less_than_one_million <- 
+  aws_2017_entity_totals %>% 
+  full_join(sf_contact_info,
+            by = "transparency_id") %>% 
+  filter(total_exp < 1000000 & total_rev < 1000000) %>% 
+  mutate(entity_name = ifelse(!is.na(entity_name.y), 
+                              entity_name.y, 
+                              entity_name.x)) %>% 
+  select(entity_name, govt_type, total_exp, total_rev, entity_phone, 
+         contact_full_name, contact_phone, contact_email, contact_title, 
+         contact_position, contact_first_name, contact_last_name)
+
+entities_only <- 
+  contact_info_less_than_one_million %>% 
+  distinct(entity_name, entity_phone)
+
+rm(aws_2017_entity_totals, sf_contact_info)
+```
+
+## Export
+
+```{r}
+write_csv(entities_only,
+          "entities_under_one_million.csv")
+
+write_csv(contact_info_less_than_one_million,
+          "entities_contacts_under_one_million.csv")
+```
+
+## Close
+
+```{r}
+dbDisconnect(odbc_aws)
+```
