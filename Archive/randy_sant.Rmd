@@ -6,7 +6,8 @@ output: html_notebook
 
 # Program Description
 
-Search Transparency for Randy Sant-related information. Possible vendor names include:
+Search Transparency for Randy Sant-related information. Possible vendor names 
+include:
 
 * Randy Sant or Sant, Randy
 * Randy Sant Consulting or RS Consulting

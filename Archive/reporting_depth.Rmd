@@ -6,11 +6,13 @@ output: html_notebook
 ---
 # Program Description
 
-Determine whether there are Organization, Category, Fund, Program, or Function levels that governments do not use when reporting to Transparency.
+Determine whether there are Organization, Category, Fund, Program, or Function 
+levels that governments do not use when reporting to Transparency.
 
 **Notes**
 
-The following tables have been replaced by the Transaction_group Table and are no longer used:
+The following tables have been replaced by the Transaction_group Table and are 
+no longer used:
 
 * cat_summary
 * category
@@ -308,7 +310,9 @@ WHERE id IN (
 
 # Identify meaningful levels of data:
 
-Several governments report non-meaninful levels of data (e.g., the description is "0"). The following pieces of code help determine how deep governments are reporting meaningful data.
+Several governments report non-meaninful levels of data (e.g., the description 
+is "0"). The following pieces of code help determine how deep governments are 
+reporting meaningful data.
 
 ```{r}
 t_transaction_group_table$id <- as.integer(t_transaction_group_table$id)

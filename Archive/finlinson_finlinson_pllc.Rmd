@@ -5,7 +5,8 @@ output: html_notebook
 ---
 # Program Description
 
-Determine the year-by-year expenditures to Finlinson & Finlinson PLLC for each local government that has Finlinson & Finlinson PLLC listed as a vendor.
+Determine the year-by-year expenditures to Finlinson & Finlinson PLLC for each 
+local government that has Finlinson & Finlinson PLLC listed as a vendor.
 
 # Program
 
