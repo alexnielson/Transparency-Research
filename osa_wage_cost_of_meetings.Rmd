@@ -58,3 +58,10 @@ employee_data_table <-
 cost_of_staff_mtg_1_hr <- 
   sum(employee_data_table$Hourly_Rate)
 ```
+
+# Close
+
+```{r}
+dbDisconnect(odbc_dw)
+```
+
