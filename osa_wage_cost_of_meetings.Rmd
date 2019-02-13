@@ -1,0 +1,60 @@
+---
+title: "OSA Employee Wage Data"
+author: "Michael Jensen"
+date: "February 2019"
+output: html_notebook
+---
+# Inputs, Packages, & Data Connections
+
+```{r}
+library(odbc)
+library(tidyverse)
+
+odbc_dw  <- dbConnect(odbc::odbc(), "StateDW", password = "DW1234")
+```
+
+# Queries
+
+```{sql, connection=odbc_dw, output.var=department_table}
+SELECT *
+FROM StateDW.dbo.Department
+WHERE LOWER(Department_Name) LIKE "%auditor%"
+```
+
+```{sql, connection=odbc_dw, output.var=department_unit_table}
+SELECT 
+  Fiscal_Year,
+  Group_Name,
+  Unit_Short_Name,
+  Division_Name
+FROM StateDW.dbo.Department_Unit
+WHERE Department = "090"
+AND Active = "Y"
+```
+
+```{sql, connection=odbc_dw, output.var=employee_data_table}
+SELECT 
+  StateDW.dbo.Employee_Data.Employee_Name,
+  StateDW.dbo.Employee_Data.Employee_Number,
+  StateDW.dbo.Employee_Data.Department_Unit,
+  StateDW.dbo.Employee_Data.Employee_FTE,
+  StateDW.dbo.Employee_Data.Gender,
+  StateDW.dbo.Employee_Data.Hourly_Rate,
+  StateDW.dbo.Employee_Data.Pay_Period_End_Date
+FROM StateDW.dbo.Employee_Data
+WHERE StateDW.dbo.Employee_Data.Department = "090"
+AND StateDW.dbo.Employee_Data.Employee_Number IS NOT NULL
+```
+
+```{r}
+employee_data_table <- 
+  employee_data_table %>% 
+  filter(Pay_Period_End_Date == as.Date("2019-01-25"))
+```
+
+# Analysis
+
+```{r}
+cost_of_staff_mtg_1_hr <- 
+  sum(employee_data_table$Hourly_Rate)
+```
