@@ -47,6 +47,22 @@ FROM StateDW.dbo.Accounting_Journal
 WHERE  LIKE 
 ```
 
+## Department Table
+
+```{sql, connection=odbc_dw, output.var=department_table}
+SELECT *
+FROM StateDW.dbo.Department
+```
+
+* 090: State Auditor
+
+## Employee Data Table
+
+```{sql, connection=odbc_dw, output.var=employee_data_table}
+SELECT *
+FROM StateDW.dbo.Employee_Data
+```
+
 ## Fund Table
 
 ```{sql, connection=odbc_dw, output.var=fund_table}
