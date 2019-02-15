@@ -240,7 +240,7 @@ ON entity.primary_contact_id = contact.id
 ```
 
 ```{r}
-t_id <- 619
+t_id <- 1630
 
 entity_table$transparency_id <- 
   entity_table$transparency_id %>% as.numeric()

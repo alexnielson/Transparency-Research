@@ -128,6 +128,7 @@ rm(aws_entity_table, aws_2017_exp, aws_2017_rev, aws_2017_exp_total,
 SELECT
   Account.Name               AS entity_name,
   Account.Transparency_ID__c AS transparency_id,
+  Account.Entity_Status__c   AS entity_status,
   Account.Phone              AS entity_phone,
   Account.Phone              AS contact_phone,
   Contact.Email              AS contact_email,
@@ -138,17 +139,18 @@ SELECT
 FROM Contact
 JOIN Account
 ON Contact.AccountId = Account.Id
-WHERE 
-  Contact.IsDeactivated__c = FALSE
-AND 
-  Account.RecordTypeId IN (
-    SELECT RecordType.Id
-    FROM RecordType
-    WHERE RecordType.DeveloperName IN (
-      'City',
-      'Interlocal',
-      'Local_and_Special_Service_District',
-      'Town'))
+WHERE Contact.IsDeactivated__c = FALSE
+AND Account.RecordTypeId IN (
+      SELECT RecordType.Id
+      FROM RecordType
+      WHERE RecordType.DeveloperName IN (
+        'City',
+        'Interlocal',
+        'Local_and_Special_Service_District',
+        'Town'))
+AND Account.Entity_Status__c NOT IN (
+  'Inactive',
+  'Dissolved')
 ```
 
 ```{r}
@@ -196,8 +198,8 @@ sf_contact_info$contact_phone <-
 
 ```{r}
 contact_info_less_than_one_million <- 
-  aws_2017_entity_totals %>% 
-  full_join(sf_contact_info,
+  sf_contact_info %>% 
+  left_join(aws_2017_entity_totals,
             by = "transparency_id") %>% 
   filter(total_exp < 1000000 & total_rev < 1000000) %>% 
   mutate(entity_name = 
@@ -217,7 +219,7 @@ contact_info_less_than_one_million <-
 
 entities_only <- 
   contact_info_less_than_one_million %>% 
-  distinct(entity_name, entity_phone, greater_of_exp_rev)
+  distinct(entity_name, govt_type, entity_phone, greater_of_exp_rev)
 
 rm(aws_2017_entity_totals, sf_contact_info)
 ```
