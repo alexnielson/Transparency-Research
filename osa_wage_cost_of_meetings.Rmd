@@ -7,6 +7,7 @@ output: html_notebook
 # Inputs, Packages, & Data Connections
 
 ```{r}
+library(lubridate)
 library(odbc)
 library(tidyverse)
 
@@ -49,7 +50,7 @@ AND StateDW.dbo.Employee_Data.Employee_Number IS NOT NULL
 ```{r}
 employee_data_table <- 
   employee_data_table %>% 
-  filter(Pay_Period_End_Date == as.Date("2019-01-25"))
+  filter(year(Pay_Period_End_Date) == year(today()))
 ```
 
 # Analysis
@@ -64,4 +65,3 @@ cost_of_staff_mtg_1_hr <-
 ```{r}
 dbDisconnect(odbc_dw)
 ```
-
