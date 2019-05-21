@@ -64,7 +64,8 @@ query_entity_transactions_2016_2017 <- function(govt_type) {
             org1, org2, org3, org4,
             cat1, cat2, cat3, cat4,
             fund1, fund2,
-            vendor_id
+            vendor_id,
+            account_number
           FROM transaction
           WHERE batch_id IN (
             SELECT id
@@ -93,7 +94,8 @@ query_entity_transactions_2016_2017 <- function(govt_type) {
       by = "batch_id") %>% 
     select(entity_name, entity_id, fiscal_year, transaction_type, 
            posting_date, amount, description, vendor_id, 
-           org1, org2, org3, org4, cat1, cat2, cat3, cat4, fund1, fund2)
+           org1, org2, org3, org4, cat1, cat2, cat3, cat4, fund1, fund2,
+           account_number)
 }
 ```
 
@@ -179,18 +181,30 @@ summary(transaction_data_2016_2017[["'SERVICE DISTRICTS'"]])
 ```{r}
 write_csv(entity_information, 
           "utah_entity_information.csv")
+
 write_csv(transaction_group_table, 
           "utah_id_crosswalk_transactions.csv")
+
 write_csv(vendor_table, 
           "utah_id_crosswalk_vendors.csv")
+
 write_csv(transaction_data_2016_2017[["'COUNTY'"]], 
           "utah_2016_2017_county.csv")
-write_csv(transaction_data_2016_2017[["'CITY'"]], 
-          "utah_2016_2017_city.csv")
+
+transaction_data_2016_2017[["'CITY'"]] %>% 
+  filter(fiscal_year == 2016) %>% 
+  write_csv("utah_2016_city.csv")
+
+transaction_data_2016_2017[["'CITY'"]] %>% 
+  filter(fiscal_year == 2017) %>% 
+  write_csv("utah_2017_city.csv")
+
 write_csv(transaction_data_2016_2017[["'INTERLOCAL'"]], 
           "utah_2016_2017_interlocal.csv")
+
 write_csv(transaction_data_2016_2017[["'LOCAL DISTRICTS'"]], 
           "utah_2016_2017_local.csv")
+
 write_csv(transaction_data_2016_2017[["'SERVICE DISTRICTS'"]], 
           "utah_2016_2017_service.csv")
 ```
