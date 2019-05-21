@@ -1,0 +1,133 @@
+---
+title: "OSA Employee Wage Data"
+author: "Michael Jensen"
+date: "February 2019"
+output: html_notebook
+---
+# Inputs, Packages, & Data Connections
+
+```{r}
+library(lubridate)
+library(odbc)
+library(tidyverse)
+
+odbc_dw  <- dbConnect(odbc::odbc(), "StateDW", password = "DW1234")
+```
+
+# StateDW Queries
+
+```{sql, connection=odbc_dw}
+SELECT *
+FROM StateDW.dbo.Department
+WHERE LOWER(Department_Name) LIKE "%auditor%"
+```
+
+```{sql, connection=odbc_dw, output.var=employee_data_table}
+SELECT 
+  Employee_Name       AS name,
+  Gender              AS gender,
+  Hourly_Rate         AS hourly_rate,
+  Pay_Period_End_Date AS paycheck_end_date
+FROM StateDW.dbo.Employee_Data
+WHERE Department = "090"
+AND Employee_Number IS NOT NULL
+```
+
+# Analysis
+
+## Cost of Meetings
+
+```{r}
+
+```
+
+## Recent Paychecks
+
+```{r}
+recent_paychecks <- 
+  employee_data_table %>% 
+  filter(year(paycheck_end_date) == year(today())) %>% 
+  arrange(name, paycheck_end_date)
+```
+
+```{r}
+rm(recent_paychecks)
+```
+
+## Wage Analysis
+
+```{r}
+employee_data <- 
+  employee_data_table %>%
+  as_tibble() %>% 
+  arrange(name, paycheck_end_date)
+
+employee_data <- 
+  employee_data %>%
+  group_by(name) %>% 
+  summarize(wage_low      = min(hourly_rate),
+            wage_high     = max(hourly_rate),
+            wage_diff     = wage_high - wage_low,
+            days_employed = 
+              (max(paycheck_end_date) - min(paycheck_end_date)) %>% 
+              as.numeric(),
+            per_day_increase = wage_diff / days_employed)
+
+summary(employee_data)
+```
+
+```{r}
+employee_data_no_zeros <- 
+  employee_data %>%
+  filter(wage_low      != 0 &
+         wage_high     != 0 &
+         days_employed != 0)
+
+summary(employee_data_no_zeros)
+```
+
+```{r}
+employees_with_increases <- 
+  employee_data_no_zeros %>% 
+  filter(wage_diff != 0)
+
+summary(employees_with_increases)
+
+mean_per_day_increase <- 
+  employees_with_increases$per_day_increase %>% 
+  mean()
+
+median_per_day_increase <- 
+  employees_with_increases$per_day_increase %>% 
+  median()
+```
+
+```{r}
+wage_request_mean <- 
+  23.02 + 
+  (as.numeric(today() - as.Date("2017-05-15")) * mean_per_day_increase) %>% 
+  round(digits = 2)
+  
+wage_request_median <- 
+  23.02 + 
+  (as.numeric(today() - as.Date("2017-05-15")) * median_per_day_increase) %>% 
+  round(digits = 2)
+
+wage_request_mean <- 
+  23.02 + 
+  (as.numeric(as.Date("2019-02-25") - as.Date("2017-05-15")) *
+     mean_per_day_increase) %>% 
+  round(digits = 2)
+  
+wage_request_median <- 
+  23.02 + 
+  (as.numeric(as.Date("2019-02-25") - as.Date("2017-05-15")) *
+     median_per_day_increase) %>% 
+  round(digits = 2)
+```
+
+# Close
+
+```{r}
+dbDisconnect(odbc_dw)
+```
