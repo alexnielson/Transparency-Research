@@ -1,0 +1,86 @@
+---
+title: "Uintah County Payments to Blue Cross Blue Shield"
+author: "Michael Jensen"
+date: "February 2019"
+output: html_notebook
+---
+# Program Description
+
+**Purpose**
+
+Query the Transparency data for information related to Uintah County and Blue Cross Blue Shield.
+
+**Input(s)**
+
+```{r}
+
+```
+
+**Output(s)**
+
+
+
+# Libraries and Data Sources
+
+```{r}
+library(odbc)
+library(scales)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+# Function Definitions
+
+
+
+# Execution
+
+```{sql, connection=odbc_aws}
+SELECT name, id
+FROM entity
+WHERE name LIKE "uintah county"
+```
+
+```{r}
+t_id <- 343
+```
+
+```{sql, connection=odbc_aws, output.var=uintah_blue_cross}
+SELECT
+  vendor_summary.fiscal_year,
+  vendor_summary.type,
+  vendor.id,
+  vendor.name,
+  vendor_summary.total
+FROM vendor_summary
+JOIN vendor
+ON vendor.id = vendor_summary.vendor_id
+WHERE vendor_summary.entity_id = ?t_id
+AND vendor_summary.vendor_id IN (
+  SELECT id
+  FROM vendor
+  WHERE (
+    name LIKE "%blue cross%" OR
+    name LIKE "%bluecross%"   OR
+    name LIKE "%regence%")
+  AND entity_id = ?t_id)
+AND fiscal_year IN (2016, 2017, 2018)
+```
+
+```{r}
+uintah_blue_cross_by_year <- 
+  uintah_blue_cross %>% 
+  group_by(fiscal_year) %>% 
+  summarize(total_amount = sum(total) %>% dollar())
+
+uintah_blue_cross_names <- 
+  uintah_blue_cross %>% 
+  distinct(name)
+```
+
+# DBMS Disconnection
+
+```{r}
+dbDisconnect(odbc_aws)
+```
