@@ -1,8 +1,10 @@
 ---
-title: "Request from Special Projects: Exp/Rev Totals and Contact Info"
+title: 'Request from Special Projects: Exp/Rev Totals and Contact Info'
 author: "Michael Jensen"
 date: "February 2019"
-output: html_notebook
+output:
+  pdf_document: default
+  html_notebook: default
 ---
 # Program Description
 
