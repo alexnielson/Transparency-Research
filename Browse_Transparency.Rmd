@@ -25,7 +25,7 @@ FROM entity
 ```
 
 ```{r}
-t_id <- 619
+t_id <- 427
 
 rm(entity_table)
 ```
@@ -171,6 +171,12 @@ SELECT *
 FROM information_schema.tables
 ```
 
+```{sql, connection=odbc_aws, output.var=transparency_table_names}
+SELECT TABLE_NAME
+FROM information_schema.tables
+WHERE TABLE_SCHEMA = "transparency"
+```
+
 ### Data Size
 
 ```{sql, connection = odbc_aws, output.var = "info_schema_size"}
@@ -240,7 +246,7 @@ ON entity.primary_contact_id = contact.id
 ```
 
 ```{r}
-t_id <- 1630
+t_id <- 1495
 
 entity_table$transparency_id <- 
   entity_table$transparency_id %>% as.numeric()
