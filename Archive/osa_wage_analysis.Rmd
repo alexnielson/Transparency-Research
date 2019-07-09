@@ -50,10 +50,6 @@ recent_paychecks <-
   arrange(name, paycheck_end_date)
 ```
 
-```{r}
-rm(recent_paychecks)
-```
-
 ## Wage Analysis
 
 ```{r}
@@ -124,6 +120,16 @@ wage_request_median <-
   (as.numeric(as.Date("2019-02-25") - as.Date("2017-05-15")) *
      median_per_day_increase) %>% 
   round(digits = 2)
+```
+
+```{r}
+like_me <- 
+  recent_paychecks %>% 
+  filter(paycheck_end_date == as.Date("2019-05-31"))
+
+like_me_2 <- 
+  like_me %>% 
+  filter(hourly_rate > 22.00 & hourly_rate < 30.00)
 ```
 
 # Close
