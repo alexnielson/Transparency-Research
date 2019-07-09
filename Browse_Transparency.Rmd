@@ -15,19 +15,15 @@ library(tidyverse)
 odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
 ```
 
-# Browse Transparency Data
+# Code Templates
 
-## Entity Table
+## Browse Transparency Data
 
-```{sql, connection=odbc_aws, output.var="entity_table"}
+### Entity Table
+
+```{sql, connection=odbc_aws, output.var="table_entity"}
 SELECT name, id
 FROM entity
-```
-
-```{r}
-t_id <- 427
-
-rm(entity_table)
 ```
 
 ```{sql, connection=odbc_aws, output.var="entity_table"}
@@ -40,9 +36,9 @@ FROM entity
 WHERE id = ?t_id
 ```
 
-## Batch Table
+### Batch Table
 
-```{sql, connection=odbc_aws, output.var="batch_table"}
+```{sql, connection=odbc_aws, output.var="table_batch"}
 SELECT 
   id,
   upload_date,
@@ -55,6 +51,7 @@ SELECT
   status_message
 FROM batch
 WHERE entity_id = ?t_id
+AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE')
 ORDER BY upload_date DESC
 ```
 
@@ -63,7 +60,7 @@ SELECT DISTINCT status
 FROM batch
 ```
 
-## Transaction Tables
+### Transaction Tables
 
 **Remember**
 
@@ -71,7 +68,7 @@ Transactions for the current and previous four fiscal years are stored in the
 transaction table. The remaining years are stored in separate tables (e.g., 
 transaction_2009).
 
-```{sql, connection=odbc_aws, output.var="transaction_table"}
+```{sql, connection=odbc_aws, output.var="table_transaction"}
 SELECT *
 FROM transaction
 WHERE batch_id IN (
@@ -80,28 +77,115 @@ WHERE batch_id IN (
   WHERE entity_id = ?t_id)
 ```
 
-## Transaction Group Table
+```{sql, connection=odbc_aws, output.var="batch_data"}
+SELECT 
+  posting_date, amount, fiscal_year, description, type, 
+  org1, org2, org3,
+  cat1, cat2, cat3,
+  fund1, fund2,
+  vendor_id, account_number
+FROM transaction
+WHERE batch_id = ?batch_id
+```
 
-```{sql, connection=odbc_aws, output.var="transaction_group"}
-SELECT *
+```{r}
+batch_data <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT 
+            posting_date, amount, fiscal_year, description, type, 
+            org1, org2, org3,
+            cat1, cat2, cat3,
+            fund1, fund2,
+            vendor_id, account_number
+          FROM transaction
+          WHERE batch_id = ", batch_id)) %>% 
+  left_join(table_transaction_group, by = c("org1" = "id")) %>% 
+    select(-org1) %>% rename(org1 = name) %>% 
+  left_join(table_transaction_group, by = c("org2" = "id")) %>% 
+    select(-org2) %>% rename(org2 = name) %>% 
+  left_join(table_transaction_group, by = c("org3" = "id")) %>% 
+    select(-org3) %>% rename(org3 = name) %>% 
+  left_join(table_transaction_group, by = c("cat1" = "id")) %>% 
+    select(-cat1) %>% rename(cat1 = name) %>% 
+  left_join(table_transaction_group, by = c("cat2" = "id")) %>% 
+    select(-cat2) %>% rename(cat2 = name) %>% 
+  left_join(table_transaction_group, by = c("cat3" = "id")) %>% 
+    select(-cat3) %>% rename(cat3 = name) %>% 
+  left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
+    select(-fund1) %>% rename(fund1 = name) %>% 
+  left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
+    select(-fund2) %>% rename(fund2 = name)
+
+batch_data_distinct <- 
+  list(
+    org1 = 
+      batch_data %>% 
+      distinct(org1) %>% 
+      arrange(org1),
+
+    org2 = 
+      batch_data %>% 
+      distinct(org2) %>% 
+      arrange(org2),
+    
+    org3 = 
+      batch_data %>% 
+      distinct(org3) %>% 
+      arrange(org3),
+    
+    cat1 = 
+      batch_data %>% 
+      distinct(cat1) %>% 
+      arrange(cat1),
+    
+    cat2 = 
+      batch_data %>% 
+      distinct(cat2) %>% 
+      arrange(cat2),
+    
+    cat3 = 
+      batch_data %>% 
+      distinct(cat3) %>% 
+      arrange(cat3),
+    
+    fund1 =
+      batch_data %>% 
+      distinct(fund1) %>% 
+      arrange(fund1),
+    
+    fund2 = 
+      batch_data %>% 
+      distinct(fund2) %>% 
+      arrange(fund2),
+    
+    ucoa =
+      batch_data %>% 
+      distinct(account_number) %>% 
+      arrange(account_number))
+```
+
+### Transaction Group Table
+
+```{sql, connection=odbc_aws, output.var="table_transaction_group"}
+SELECT id, name
 FROM transaction_group
 ```
 
-## Summary Table
+### Summary Table
 
 **Remember**
 
-The information in the Summary Table is for summarizing transactions by org, 
-cat, fund, program, and function. It is not for summarizing data by fiscal year
-(do that using the Transaction Table).
+The information in the Summary Table is for summarizing transactions by `org`, `cat`, `fund`, `program`, and `function`. It is not for summarizing data by fiscal year (do that using the Transaction Table).
 
-```{sql, connection=odbc_aws, output.var="summary_table"}
+```{sql, connection=odbc_aws, output.var="table_summary"}
 SELECT *
 FROM summary
 WHERE entity_id = ?t_id
 ```
 
-## Vendor Table
+### Vendor Table
 
 **Remember**
 
@@ -109,23 +193,23 @@ The Vendor Table contains all vendors uploaded to Transparency, which means that
 it contains vendors that have been deleted. The Vendor Summary Table contains 
 current information.
 
-```{sql, connection=odbc_aws, output.var="vendor_table"}
+```{sql, connection=odbc_aws, output.var="table_vendor"}
 SELECT *
 FROM vendor
 WHERE entity_id = ?t_id
 ```
 
-## Vendor Summary Table
+### Vendor Summary Table
 
-```{sql, connection=odbc_aws, output.var="vendor_summary_table"}
+```{sql, connection=odbc_aws, output.var="table_vendor_summary"}
 SELECT *
 FROM vendor_summary
 WHERE entity_id = ?t_id
 ```
 
-# Browse Transparency Metadata
+## Browse Transparency Metadata
 
-## Table Row Counts
+### Table Row Counts
 
 ```{sql, connection = odbc_aws, output.var = "count_batch"}
 SELECT COUNT(*) FROM batch
@@ -162,7 +246,7 @@ count_deleted_transactions <-
   as.numeric(count_deleted_transactions$`COUNT(*)`)
 ```
 
-## Information Schema Tables
+### Information Schema Tables
 
 ### Table Names and Information
 
@@ -191,7 +275,7 @@ ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC
 data_size_in_Mb <- round(sum(info_schema_size$`Size in MB`))
 ```
 
-## Indexes
+### Indexes
 
 Create an index (permission to do so is currently denied):
 
@@ -220,7 +304,7 @@ SHOW INDEX FROM entity
 SHOW INDEX FROM transaction
 ```
 
-## R Object Size
+### R Object Size
 
 ```{r}
 entity_transactions %>% 
@@ -228,92 +312,90 @@ entity_transactions %>%
   print(units = "auto")
 ```
 
-# Troubleshoot an Entity's Data
+# Workspace
 
-```{sql, connection=odbc_aws, output.var="entity_table"}
-SELECT 
-  entity.name   AS entity_name, 
-  entity.id     AS transparency_id,
-  entity.govt_lvl,
-  entity.fiscal_period,
-  entity.payroll_period,
-  contact.name  AS contact_name,
-  contact.email AS contact_email, 
-  contact.phone AS contact_phone
-FROM entity
-JOIN contact
-ON entity.primary_contact_id = contact.id
+```{r}
+t_id <- 207
+
+batch_id <- 54692
 ```
 
 ```{r}
-t_id <- 1495
+batch_data <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT 
+            posting_date, amount, fiscal_year, description, type, 
+            org1, org2, org3,
+            cat1, cat2, cat3,
+            fund1, fund2,
+            vendor_id, account_number
+          FROM transaction
+          WHERE batch_id = ", batch_id)) %>% 
+  left_join(table_transaction_group, by = c("org1" = "id")) %>% 
+    select(-org1) %>% rename(org1 = name) %>% 
+  left_join(table_transaction_group, by = c("org2" = "id")) %>% 
+    select(-org2) %>% rename(org2 = name) %>% 
+  left_join(table_transaction_group, by = c("org3" = "id")) %>% 
+    select(-org3) %>% rename(org3 = name) %>% 
+  left_join(table_transaction_group, by = c("cat1" = "id")) %>% 
+    select(-cat1) %>% rename(cat1 = name) %>% 
+  left_join(table_transaction_group, by = c("cat2" = "id")) %>% 
+    select(-cat2) %>% rename(cat2 = name) %>% 
+  left_join(table_transaction_group, by = c("cat3" = "id")) %>% 
+    select(-cat3) %>% rename(cat3 = name) %>% 
+  left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
+    select(-fund1) %>% rename(fund1 = name) %>% 
+  left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
+    select(-fund2) %>% rename(fund2 = name)
 
-entity_table$transparency_id <- 
-  entity_table$transparency_id %>% as.numeric()
+batch_data_distinct <- 
+  list(
+    org1 = 
+      batch_data %>% 
+      distinct(org1) %>% 
+      arrange(org1),
 
-entity_info <- 
-  entity_table %>%
-  filter(transparency_id == t_id)
-```
-
-```{sql, connection=odbc_aws, output.var="batch_table"}
-SELECT 
-  id,
-  upload_date,
-  processed_date,
-  file_record_count,
-  file_total_amount,
-  begin_txn_date,
-  end_txn_date,
-  status,
-  status_message
-FROM batch
-WHERE entity_id = ?t_id
-ORDER BY upload_date DESC
-```
-
-```{sql, connection=odbc_aws, output.var="transaction_table"}
-SELECT 
-  posting_date,
-  amount,
-  batch_id,
-  fiscal_year,
-  description,
-  type
-FROM transaction
-WHERE batch_id IN (
-  SELECT id
-  FROM batch
-  WHERE entity_id = ?t_id)
-```
-
-```{r}
-posting_dates_exp <- 
-  transaction_table %>% 
-  filter(type == 1) %>% 
-  .$posting_date %>% 
-  floor_date() %>% 
-  unique() %>% 
-  as.character() %>% 
-  as.matrix()
-
-posting_dates_rev <- 
-  transaction_table %>% 
-  filter(type == 2) %>% 
-  .$posting_date %>% 
-  floor_date() %>% 
-  unique() %>% 
-  as.character() %>% 
-  as.matrix()
-
-posting_dates_w2 <- 
-  transaction_table %>% 
-  filter(type == 3) %>% 
-  .$posting_date %>% 
-  floor_date() %>% 
-  unique() %>% 
-  as.character() %>% 
-  as.matrix()
+    org2 = 
+      batch_data %>% 
+      distinct(org2) %>% 
+      arrange(org2),
+    
+    org3 = 
+      batch_data %>% 
+      distinct(org3) %>% 
+      arrange(org3),
+    
+    cat1 = 
+      batch_data %>% 
+      distinct(cat1) %>% 
+      arrange(cat1),
+    
+    cat2 = 
+      batch_data %>% 
+      distinct(cat2) %>% 
+      arrange(cat2),
+    
+    cat3 = 
+      batch_data %>% 
+      distinct(cat3) %>% 
+      arrange(cat3),
+    
+    fund1 =
+      batch_data %>% 
+      distinct(fund1) %>% 
+      arrange(fund1),
+    
+    fund2 = 
+      batch_data %>% 
+      distinct(fund2) %>% 
+      arrange(fund2),
+    
+    ucoa =
+      batch_data %>% 
+      distinct(account_number) %>% 
+      arrange(account_number))
 ```
 
 # Close
