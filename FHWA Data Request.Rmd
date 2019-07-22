@@ -8,7 +8,7 @@ output: html_notebook
 
 **Purpose**
 
-
+Give UDOT a sample of the transportation-related data in Transparency in order to help them decide whether to use the Transparency data to complete the Form FHWA-536 (Rev.06/2000) data request from the Federal Highway Administration.
 
 **Input(s)**
 
@@ -18,7 +18,8 @@ dsn_aws <- "transpAWS"
 
 **Output(s)**
 
-
+* A count of the number of local governments that report transactions with the UCA fields that Kelly Garner (from UDOT) is interested in.
+* A sample of datasets that represent what UDOT will find in the Transparency data.
 
 # Libraries and Data Sources
 
@@ -43,11 +44,80 @@ download.file(
 
 ## Argument Definitions
 
-```{r}
-
+```{r, eval=FALSE}
+  #   t_id (num): The entity's Transparency ID, as queried from Transparency.
+  #   fiscal_year (num): The fiscal year to query.
+  #   funct_or_account_code (char): Which portion of the UCA code to evaluate 
+  #   (i.e., "funct" for function or "account").
+  #   ucoa_transportation (list): The transportation-related UCA fields UDOT
+  #     considers useful.
 ```
 
+## uses_transp_code
 
+```{r}
+uses_transp_code <- function(t_id, fiscal_year, funct_or_account_code,
+                             ucoa_transportation) {
+  # Determine whether an entity uses any of the transportation-related UCA 
+  # codes for the given fiscal year.
+  #
+  # Arguments:
+  #   t_id (num): The entity's Transparency ID, as queried from Transparency.
+  #   fiscal_year (num): The fiscal year to query.
+  #   funct_or_account_code (char): Which portion of the UCA code to evaluate 
+  #   (i.e., "funct" for function or "account").
+  #   ucoa_transportation (list): The transportation-related UCA fields UDOT
+  #     considers useful.
+  #
+  # Value:
+  #   Numeric (1 or 0).
+  
+  reported_uca <- 
+    dbGetQuery(
+    odbc_aws,
+    paste("
+      SELECT DISTINCT account_number
+      FROM transaction
+      WHERE fiscal_year = ", fiscal_year, "
+      AND type IN (1, 2) 
+      AND batch_id IN (
+        SELECT id
+        FROM batch
+        WHERE entity_id = ", t_id, "
+        AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))")) %>% 
+    filter(nchar(account_number) == 19) # Filter out invalid UCA codes.
+  
+  if (funct_or_account_code == "funct") {
+    
+    functions <- 
+      reported_uca %>% 
+      .[["account_number"]] %>% 
+      substr(5, 10) %>% 
+      unique()
+    
+    if (any(functions %in% ucoa_transportation[["funct"]][["NUMBER"]])) {
+      1
+    } else {
+      0
+    }
+    
+  } else if (funct_or_account_code == "account") {
+    
+    accounts <- 
+      reported_uca %>% 
+      .[["account_number"]] %>% 
+      substr(12, 19) %>% 
+      unique()
+    
+    if (any(accounts %in% ucoa_transportation[["account_rev"]][["NUMBER"]]) ||
+        any(accounts %in% ucoa_transportation[["account_exp"]][["NUMBER"]])) {
+      1
+    } else {
+      0
+    }
+  }
+}
+```
 
 # Execution
 
@@ -116,12 +186,8 @@ ucoa_transportation <- list()
 ucoa_transportation[["funct"]] <- 
   ucoa[["funct"]] %>% 
   filter(
-    NUMBER == "000000" | # Not Applicable
-    NUMBER == "200000" | # Public Safety
-    NUMBER == "200100" | # Administration
     NUMBER == "200403" | # Patrol
     NUMBER == "200406" | # Traffic Control 
-    NUMBER == "201200" | # Emergency Management
     NUMBER == "300500" | # Transportation
     NUMBER == "300501" | # Administration
     NUMBER == "300502" | # Streets and Highways
@@ -135,7 +201,8 @@ ucoa_transportation[["funct"]] <-
     NUMBER == "300700" | # Mass Transit
     NUMBER == "300701" | # Administration
     NUMBER == "300702" | # Operations
-    NUMBER == "500316")  # Parkways and Boulevards
+    NUMBER == "500316" | # Parkways and Boulevards
+    NUMBER == "500504")  # Education Safety
 
 ucoa_transportation[["account_rev"]] <- 
   ucoa[["account_rev"]] %>% 
@@ -144,20 +211,72 @@ ucoa_transportation[["account_rev"]] <-
     NUMBER == "30010308" | # Transportation Tax
     NUMBER == "30010311" | # Motor Fuels Tax
     NUMBER == "30010312" | # Motor Vehicle Rental Tax
+    NUMBER == "30020206" | # Street and Curb Permits
     NUMBER == "30020300" | # Motor Vehicle Registrations
+    NUMBER == "30030101" | # Operating Grants
     NUMBER == "30030205" | # Class B and C Road Funds
-    NUMBER == "30040203" | # Parking
-    NUMBER == "30040207" | # Tolls
-    NUMBER == "30050700")  # Parking Fines
+    NUMBER == "30030206" | # Mineral Lease Allotment
+    NUMBER == "30040000" | # Charges for Service
+    NUMBER == "30040100" | # Fares
+    NUMBER == "30040201" | # Impact Fees
+    NUMBER == "30040207")  # Tolls
 
 ucoa_transportation[["account_exp"]] <- 
   ucoa[["account_exp"]] %>% 
   filter(
+    NUMBER == "40021200" | # Rental of Equipment and Vehicles
+    NUMBER == "40050500" | # Material
+    NUMBER == "40050501" | # Construction Material
     NUMBER == "40050502" | # Road Repair Material
-    NUMBER == "40050503")  # Salt and Sand
+    NUMBER == "40050503" | # Salt and Sand
+    NUMBER == "40050600" | # Repair and Maintenance
+    NUMBER == "40050604" | # Other Assets
+    NUMBER == "40050900" | # Signage
+    NUMBER == "40080300" | # Infrastructure
+    NUMBER == "40080400" | # Construction
+    NUMBER == "40170100" | # Principal
+    NUMBER == "40170200" | # Interest
+    NUMBER == "40170300" | # Fees
+    NUMBER == "40170400" | # Bond Issuance Costs
+    NUMBER == "40170500")  # Refunds
 ```
 
 ## Transparency
+
+### Number of Governments that use UCoA Transportation Codes
+
+```{r}
+entities <- 
+  dbGetQuery(
+    odbc_aws,
+    "
+    SELECT id, name, govt_lvl
+    FROM entity
+    WHERE govt_lvl IN (
+      SELECT level_key
+      FROM government_level
+      WHERE level_key NOT IN (
+        'K12 EDUCATION', 'HIGHER EDUCATION', 'STATE', 'INDEPENDENT'))") %>% 
+  mutate(
+    uses_transp_funct_code = map(
+                               id,
+                               uses_transp_code, 
+                               fiscal_year = 2018,
+                               funct_or_account_code = "funct",
+                               ucoa_transportation),
+    uses_transp_account_code = map(
+                                id,
+                                uses_transp_code, 
+                                fiscal_year = 2018,
+                                funct_or_account_code = "account",
+                                ucoa_transportation)) %>% 
+  unnest()
+
+total_funct <- sum(entities$uses_transp_funct_code)
+total_account <- sum(entities$uses_transp_account_code)
+```
+
+### 2018 Data from Sample Governments
 
 ```{r}
 entity_table <- 
@@ -165,23 +284,25 @@ entity_table <-
     odbc_aws,
     "SELECT id, name, govt_lvl FROM entity")
 
-t_id <- 297 # Beaver County
-```
-
-```{r}
 transaction_group <- 
   dbGetQuery(
     odbc_aws,
     "SELECT id, name FROM transaction_group")
+```
 
-transportation_rev <- 
+Box Elder County: An entity that doesn't use UCoA transportation codes
+
+```{r}
+t_id <- 299
+  
+box_elder_2018_rev <- 
   dbGetQuery(
     odbc_aws,
     paste("
           SELECT 
             amount, 
-            account_number, 
-            description, 
+            account_number AS chart_of_accounts_code, 
+            description AS entity_transaction_description, 
             org1, org2, org3,
             cat1, cat2, cat3,
             fund1, fund2
@@ -194,7 +315,7 @@ transportation_rev <-
             WHERE entity_id = ", t_id, "
             AND status = 'PROCESSED')")) %>% 
   cSplit(
-    splitCols = "account_number", 
+    splitCols = "chart_of_accounts_code", 
     sep = "-", 
     direction = "wide", 
     type.convert = FALSE) %>% 
@@ -222,16 +343,15 @@ transportation_rev <-
   left_join(transaction_group, by = c("fund2" = "id")) %>% 
   select(-fund2) %>% 
   rename(fund2 = name)
-  # filter(account_number_2 %in% ucoa_transportation[["funct"]]$NUMBER)
 
-transportation_exp <- 
+box_elder_2018_exp <- 
   dbGetQuery(
     odbc_aws,
     paste("
           SELECT 
             amount, 
-            account_number, 
-            description, 
+            account_number AS chart_of_accounts_code, 
+            description AS entity_transaction_description, 
             org1, org2, org3,
             cat1, cat2, cat3,
             fund1, fund2
@@ -244,7 +364,7 @@ transportation_exp <-
             WHERE entity_id = ", t_id, "
             AND status = 'PROCESSED')")) %>% 
   cSplit(
-    splitCols = "account_number", 
+    splitCols = "chart_of_accounts_code", 
     sep = "-", 
     direction = "wide", 
     type.convert = FALSE) %>% 
@@ -272,56 +392,116 @@ transportation_exp <-
   left_join(transaction_group, by = c("fund2" = "id")) %>% 
   select(-fund2) %>% 
   rename(fund2 = name)
-  # filter(account_number_2 %in% ucoa_transportation[["funct"]]$NUMBER)
 
-unique_values <- list()
-
-unique_values$rev <- 
-  as.list(
-unique_rev_descriptions <- transportation_rev$org1 %>% unique() %>% as.matrix(),
-unique_rev_org1  <- transportation_rev$org1  %>% unique() %>% as.matrix(),
-unique_rev_org2  <- transportation_rev$org2  %>% unique() %>% as.matrix(),
-unique_rev_org3  <- transportation_rev$org3  %>% unique() %>% as.matrix(),
-unique_rev_cat1  <- transportation_rev$cat1  %>% unique() %>% as.matrix(),
-unique_rev_cat2  <- transportation_rev$cat2  %>% unique() %>% as.matrix(),
-unique_rev_cat3  <- transportation_rev$cat3  %>% unique() %>% as.matrix(),
-unique_rev_fund1 <- transportation_rev$fund1 %>% unique() %>% as.matrix(),
-unique_rev_fund2 <- transportation_rev$fund2 %>% unique() %>% as.matrix())
-
-unique_values$exp <- 
-  as.list(
-unique_exp_descriptions <- transportation_exp$org1 %>% unique() %>% as.matrix(),
-unique_exp_org1  <- transportation_exp$org1  %>% unique() %>% as.matrix(),
-unique_exp_org2  <- transportation_exp$org2  %>% unique() %>% as.matrix(),
-unique_exp_org3  <- transportation_exp$org3  %>% unique() %>% as.matrix(),
-unique_exp_cat1  <- transportation_exp$cat1  %>% unique() %>% as.matrix(),
-unique_exp_cat2  <- transportation_exp$cat2  %>% unique() %>% as.matrix(),
-unique_exp_cat3  <- transportation_exp$cat3  %>% unique() %>% as.matrix(),
-unique_exp_fund1 <- transportation_exp$fund1 %>% unique() %>% as.matrix(),
-unique_exp_fund2 <- transportation_exp$fund2 %>% unique() %>% as.matrix())
-
+write_csv(box_elder_2018_rev, "box_elder_2018_rev.csv")
+write_csv(box_elder_2018_exp, "box_elder_2018_exp.csv")
 ```
 
-Highland:
+Highland City: An entity that uses UCoA transportation codes
 
 ```{r}
-highland_exp <- 
+t_id <- 445
+  
+highland_2018_rev <- 
   dbGetQuery(
     odbc_aws,
     paste("
-          SELECT account_number
+          SELECT 
+            amount, 
+            account_number AS chart_of_accounts_code, 
+            description AS entity_transaction_description, 
+            org1, org2, org3,
+            cat1, cat2, cat3,
+            fund1, fund2
           FROM transaction
-          WHERE batch_id IN (
+          WHERE fiscal_year = 2018
+          AND type = 2
+          AND batch_id IN (
             SELECT id
             FROM batch
-            WHERE entity_id = 445
-            AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))
-          AND type = 1")) 
-  # .[["account_number"]]
-  
-unique_highland_exp <-   
-  unique(highland_exp$account_number) %>% 
-  as_tibble()
+            WHERE entity_id = ", t_id, "
+            AND status = 'PROCESSED')")) %>% 
+  cSplit(
+    splitCols = "chart_of_accounts_code", 
+    sep = "-", 
+    direction = "wide", 
+    type.convert = FALSE) %>% 
+  left_join(transaction_group, by = c("org1" = "id")) %>% 
+  select(-org1) %>% 
+  rename(org1 = name) %>% 
+  left_join(transaction_group, by = c("org2" = "id")) %>% 
+  select(-org2) %>% 
+  rename(org2 = name) %>% 
+  left_join(transaction_group, by = c("org3" = "id")) %>% 
+  select(-org3) %>% 
+  rename(org3 = name) %>% 
+  left_join(transaction_group, by = c("cat1" = "id")) %>% 
+  select(-cat1) %>% 
+  rename(cat1 = name) %>% 
+  left_join(transaction_group, by = c("cat2" = "id")) %>% 
+  select(-cat2) %>% 
+  rename(cat2 = name) %>% 
+  left_join(transaction_group, by = c("cat3" = "id")) %>% 
+  select(-cat3) %>% 
+  rename(cat3 = name) %>% 
+  left_join(transaction_group, by = c("fund1" = "id")) %>% 
+  select(-fund1) %>% 
+  rename(fund1 = name) %>% 
+  left_join(transaction_group, by = c("fund2" = "id")) %>% 
+  select(-fund2) %>% 
+  rename(fund2 = name)
+
+highland_2018_exp <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT 
+            amount, 
+            account_number AS chart_of_accounts_code, 
+            description AS entity_transaction_description, 
+            org1, org2, org3,
+            cat1, cat2, cat3,
+            fund1, fund2
+          FROM transaction
+          WHERE fiscal_year = 2018
+          AND type = 1
+          AND batch_id IN (
+            SELECT id
+            FROM batch
+            WHERE entity_id = ", t_id, "
+            AND status = 'PROCESSED')")) %>% 
+  cSplit(
+    splitCols = "chart_of_accounts_code", 
+    sep = "-", 
+    direction = "wide", 
+    type.convert = FALSE) %>% 
+  left_join(transaction_group, by = c("org1" = "id")) %>% 
+  select(-org1) %>% 
+  rename(org1 = name) %>% 
+  left_join(transaction_group, by = c("org2" = "id")) %>% 
+  select(-org2) %>% 
+  rename(org2 = name) %>% 
+  left_join(transaction_group, by = c("org3" = "id")) %>% 
+  select(-org3) %>% 
+  rename(org3 = name) %>% 
+  left_join(transaction_group, by = c("cat1" = "id")) %>% 
+  select(-cat1) %>% 
+  rename(cat1 = name) %>% 
+  left_join(transaction_group, by = c("cat2" = "id")) %>% 
+  select(-cat2) %>% 
+  rename(cat2 = name) %>% 
+  left_join(transaction_group, by = c("cat3" = "id")) %>% 
+  select(-cat3) %>% 
+  rename(cat3 = name) %>% 
+  left_join(transaction_group, by = c("fund1" = "id")) %>% 
+  select(-fund1) %>% 
+  rename(fund1 = name) %>% 
+  left_join(transaction_group, by = c("fund2" = "id")) %>% 
+  select(-fund2) %>% 
+  rename(fund2 = name)
+
+write_csv(highland_2018_rev, "highland_2018_rev.csv")
+write_csv(highland_2018_exp, "highland_2018_exp.csv")
 ```
 
 # DBMS Disconnection
