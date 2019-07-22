@@ -1,0 +1,79 @@
+---
+title: "USBE Spending (Sydnee's Project)"
+output: html_notebook
+---
+# Packages, Data Connection, and Input
+
+```{r}
+library(odbc)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+```{sql, connection=odbc_aws, output.var="table_transaction_group"}
+SELECT id, name
+FROM transaction_group
+```
+
+```{sql, connection=odbc_aws, output.var="table_vendor"}
+SELECT id, name
+FROM vendor
+WHERE entity_id = 1
+```
+
+```{r}
+usbe_exp_2018 <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT 
+            amount, description,
+            org1, org2, org3,
+            cat1, cat2, cat3,
+            fund1, fund2,
+            vendor_id
+          FROM transaction
+          WHERE fiscal_year = 2018
+          AND org1 = 1446613
+          AND type = 1")) %>%
+  left_join(table_vendor, by = c("vendor_id" = "id")) %>% 
+    select(-vendor_id) %>% rename(vendor = name) %>% 
+  left_join(table_transaction_group, by = c("org1" = "id")) %>% 
+    select(-org1) %>% rename(org1 = name) %>% 
+  left_join(table_transaction_group, by = c("org2" = "id")) %>% 
+    select(-org2) %>% rename(org2 = name) %>% 
+  left_join(table_transaction_group, by = c("org3" = "id")) %>% 
+    select(-org3) %>% rename(org3 = name) %>% 
+  left_join(table_transaction_group, by = c("cat1" = "id")) %>% 
+    select(-cat1) %>% rename(cat1 = name) %>% 
+  left_join(table_transaction_group, by = c("cat2" = "id")) %>% 
+    select(-cat2) %>% rename(cat2 = name) %>% 
+  left_join(table_transaction_group, by = c("cat3" = "id")) %>% 
+    select(-cat3) %>% rename(cat3 = name) %>% 
+  left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
+    select(-fund1) %>% rename(fund1 = name) %>% 
+  left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
+    select(-fund2) %>% rename(fund2 = name) %>% 
+  filter(fund1 == "Special Revenue Fund") %>% 
+  mutate(vendor = str_to_lower(vendor))
+
+lea_names <- 
+  tibble(
+    name = "alpine school district")
+
+non_passthrough <- 
+  usbe_exp_2018 %>% 
+  filter(!vendor %in% lea_names$name) %>% 
+  filter(cat1 != "Other Charges/Pass Through") %>% 
+  filter(org3 != "PED Deaf & Hard of Hearing")
+
+unique_org_cat <- 
+  list(
+    org2 = unique(non_passthrough$org2) %>% tibble(),
+    org3 = unique(non_passthrough$org3) %>% tibble(),
+    cat1 = unique(non_passthrough$cat1) %>% tibble(),
+    cat2 = unique(non_passthrough$cat2) %>% tibble(),
+    cat3 = unique(non_passthrough$cat3) %>% tibble())
+```
+
