@@ -125,7 +125,7 @@ wage_request_median <-
 ```{r}
 like_me <- 
   recent_paychecks %>% 
-  filter(paycheck_end_date == as.Date("2019-05-31"))
+  filter(paycheck_end_date == max(paycheck_end_date))
 
 like_me_2 <- 
   like_me %>% 
