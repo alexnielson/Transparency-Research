@@ -21,8 +21,12 @@ odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
 
 ### Entity Table
 
+```{r}
+table_entity <- dbGetQuery(odbc_aws, "SELECT id, name FROM entity")
+```
+
 ```{sql, connection=odbc_aws, output.var="table_entity"}
-SELECT name, id
+SELECT id, name
 FROM entity
 ```
 
@@ -88,8 +92,16 @@ FROM transaction
 WHERE batch_id = ?batch_id
 ```
 
+Transactions for a specific batch:
+
 ```{r}
-batch_data <- 
+table_transaction_group <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM transaction_group")
+
+table_vendor <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM vendor WHERE entity_id <> 1")
+
+batch_transactions <- 
   dbGetQuery(
     odbc_aws,
     paste("
@@ -116,58 +128,68 @@ batch_data <-
   left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
     select(-fund1) %>% rename(fund1 = name) %>% 
   left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
-    select(-fund2) %>% rename(fund2 = name)
+    select(-fund2) %>% rename(fund2 = name) %>% 
+  left_join(table_vendor, by = c("vendor_id" = "id")) %>% 
+    select(-vendor_id) %>% rename(vendor_name = name)
 
-batch_data_distinct <- 
+distinct_batch_transactions <- 
   list(
     org1 = 
-      batch_data %>% 
+      batch_transactions %>% 
       distinct(org1) %>% 
       arrange(org1),
 
     org2 = 
-      batch_data %>% 
+      batch_transactions %>% 
       distinct(org2) %>% 
       arrange(org2),
     
     org3 = 
-      batch_data %>% 
+      batch_transactions %>% 
       distinct(org3) %>% 
       arrange(org3),
     
     cat1 = 
-      batch_data %>% 
+      batch_transactions %>% 
       distinct(cat1) %>% 
       arrange(cat1),
     
     cat2 = 
-      batch_data %>% 
+      batch_transactions %>% 
       distinct(cat2) %>% 
       arrange(cat2),
     
     cat3 = 
-      batch_data %>% 
+      batch_transactions %>% 
       distinct(cat3) %>% 
       arrange(cat3),
     
     fund1 =
-      batch_data %>% 
+      batch_transactions %>% 
       distinct(fund1) %>% 
       arrange(fund1),
     
     fund2 = 
-      batch_data %>% 
+      batch_transactions %>% 
       distinct(fund2) %>% 
       arrange(fund2),
     
     ucoa =
-      batch_data %>% 
+      batch_transactions %>% 
       distinct(account_number) %>% 
       arrange(account_number))
 ```
 
+Non-archived transactions for an entity:
+
 ```{r}
-transactions_fy_2015 <- 
+table_transaction_group <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM transaction_group")
+
+table_vendor <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM vendor WHERE entity_id <> 1")
+
+transactions <- 
   dbGetQuery(
     odbc_aws,
     paste("
@@ -175,11 +197,10 @@ transactions_fy_2015 <-
             posting_date, amount, fiscal_year, description, type, 
             org1, org2, org3,
             cat1, cat2, cat3,
-            fund1, fund2,
+            fund1, fu nd2,
             vendor_id, account_number
           FROM transaction
-          WHERE fiscal_year = 2015
-          AND batch_id IN (
+          WHERE batch_id IN (
             SELECT id
             FROM batch
             WHERE entity_id = ", t_id, "
@@ -199,10 +220,64 @@ transactions_fy_2015 <-
   left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
     select(-fund1) %>% rename(fund1 = name) %>% 
   left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
-    select(-fund2) %>% rename(fund2 = name)
+    select(-fund2) %>% rename(fund2 = name) %>% 
+  left_join(table_vendor, by = c("vendor_id" = "id")) %>% 
+    select(-vendor_id) %>% rename(vendor_name = name)
+
+distinct_transactions <- 
+  list(
+    org1 = 
+      transactions %>% 
+      distinct(org1) %>% 
+      arrange(org1),
+
+    org2 = 
+      transactions %>% 
+      distinct(org2) %>% 
+      arrange(org2),
+    
+    org3 = 
+      transactions %>% 
+      distinct(org3) %>% 
+      arrange(org3),
+    
+    cat1 = 
+      transactions %>% 
+      distinct(cat1) %>% 
+      arrange(cat1),
+    
+    cat2 = 
+      transactions %>% 
+      distinct(cat2) %>% 
+      arrange(cat2),
+    
+    cat3 = 
+      transactions %>% 
+      distinct(cat3) %>% 
+      arrange(cat3),
+    
+    fund1 =
+      transactions %>% 
+      distinct(fund1) %>% 
+      arrange(fund1),
+    
+    fund2 = 
+      transactions %>% 
+      distinct(fund2) %>% 
+      arrange(fund2),
+    
+    ucoa =
+      transactions %>% 
+      distinct(account_number) %>% 
+      arrange(account_number))
 ```
 
 ### Transaction Group Table
+
+```{r}
+table_transaction_group <-  
+  dbGetQuery(odbc_aws, "SELECT id, name FROM transaction_group")
+```
 
 ```{sql, connection=odbc_aws, output.var="table_transaction_group"}
 SELECT id, name
@@ -229,6 +304,11 @@ The Vendor Table contains all vendors uploaded to Transparency, which means that
 it contains vendors that have been deleted. The Vendor Summary Table contains 
 current information.
 
+```{r}
+table_vendor <- 
+  dbGetQuery(odbc_aws, "SELECT id, name, entity_id FROM vendor")
+```
+
 ```{sql, connection=odbc_aws, output.var="table_vendor"}
 SELECT *
 FROM vendor
@@ -236,6 +316,13 @@ WHERE entity_id = ?t_id
 ```
 
 ### Vendor Summary Table
+
+```{r}
+table_vendor_summary <- 
+  dbGetQuery(
+    odbc_aws, 
+    "SELECT entity_id, type, fiscal_year, total, vendor_id FROM vendor_summary")
+```
 
 ```{sql, connection=odbc_aws, output.var="table_vendor_summary"}
 SELECT *
@@ -354,231 +441,6 @@ entity_transactions %>%
 t_id <- 207
 
 batch_id <- 54692
-```
-
-```{r}
-batch_data <- 
-  dbGetQuery(
-    odbc_aws,
-    paste("
-          SELECT 
-            posting_date, amount, fiscal_year, description, type, 
-            org1, org2, org3,
-            cat1, cat2, cat3,
-            fund1, fund2,
-            vendor_id, account_number
-          FROM transaction
-          WHERE batch_id = ", batch_id)) %>% 
-  left_join(table_transaction_group, by = c("org1" = "id")) %>% 
-    select(-org1) %>% rename(org1 = name) %>% 
-  left_join(table_transaction_group, by = c("org2" = "id")) %>% 
-    select(-org2) %>% rename(org2 = name) %>% 
-  left_join(table_transaction_group, by = c("org3" = "id")) %>% 
-    select(-org3) %>% rename(org3 = name) %>% 
-  left_join(table_transaction_group, by = c("cat1" = "id")) %>% 
-    select(-cat1) %>% rename(cat1 = name) %>% 
-  left_join(table_transaction_group, by = c("cat2" = "id")) %>% 
-    select(-cat2) %>% rename(cat2 = name) %>% 
-  left_join(table_transaction_group, by = c("cat3" = "id")) %>% 
-    select(-cat3) %>% rename(cat3 = name) %>% 
-  left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
-    select(-fund1) %>% rename(fund1 = name) %>% 
-  left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
-    select(-fund2) %>% rename(fund2 = name)
-
-batch_data_32 <- 
-  batch_data %>% 
-  filter(!is.na(account_number), 
-         account_number %>% str_detect("^32-"))
-
-batch_data_49 <- 
-  batch_data %>% 
-  filter(!is.na(account_number), 
-         account_number %>% str_detect("^49-"))
-```
-
-```{r}
-dsd_2014 <- 
-  dbGetQuery(
-    odbc_aws,
-    paste("
-          SELECT 
-            posting_date, amount, fiscal_year, description, type, 
-            org1, org2, org3,
-            cat1, cat2, cat3,
-            fund1, fund2,
-            vendor_id, account_number
-          FROM transaction
-          WHERE fiscal_year = 2014
-          AND batch_id IN (
-            SELECT id
-            FROM batch
-            WHERE entity_id = 207
-            AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))")) %>% 
-  left_join(table_transaction_group, by = c("org1" = "id")) %>% 
-    select(-org1) %>% rename(org1 = name) %>% 
-  left_join(table_transaction_group, by = c("org2" = "id")) %>% 
-    select(-org2) %>% rename(org2 = name) %>% 
-  left_join(table_transaction_group, by = c("org3" = "id")) %>% 
-    select(-org3) %>% rename(org3 = name) %>% 
-  left_join(table_transaction_group, by = c("cat1" = "id")) %>% 
-    select(-cat1) %>% rename(cat1 = name) %>% 
-  left_join(table_transaction_group, by = c("cat2" = "id")) %>% 
-    select(-cat2) %>% rename(cat2 = name) %>% 
-  left_join(table_transaction_group, by = c("cat3" = "id")) %>% 
-    select(-cat3) %>% rename(cat3 = name) %>% 
-  left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
-    select(-fund1) %>% rename(fund1 = name) %>% 
-  left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
-    select(-fund2) %>% rename(fund2 = name)
-
-dsd_2014_distinct <- 
-  list(
-    org1 = 
-      dsd_2014 %>% 
-      distinct(org1) %>% 
-      arrange(org1),
-
-    org2 = 
-      dsd_2014 %>% 
-      distinct(org2) %>% 
-      arrange(org2),
-    
-    org3 = 
-      dsd_2014 %>% 
-      distinct(org3) %>% 
-      arrange(org3),
-    
-    cat1 = 
-      dsd_2014 %>% 
-      distinct(cat1) %>% 
-      arrange(cat1),
-    
-    cat2 = 
-      dsd_2014 %>% 
-      distinct(cat2) %>% 
-      arrange(cat2),
-    
-    cat3 = 
-      dsd_2014 %>% 
-      distinct(cat3) %>% 
-      arrange(cat3),
-    
-    fund1 =
-      dsd_2014 %>% 
-      distinct(fund1) %>% 
-      arrange(fund1),
-    
-    fund2 = 
-      dsd_2014 %>% 
-      distinct(fund2) %>% 
-      arrange(fund2),
-    
-    ucoa =
-      dsd_2014 %>% 
-      distinct(account_number) %>% 
-      arrange(account_number))
-
-dsd_2015 <- 
-  dbGetQuery(
-    odbc_aws,
-    paste("
-          SELECT 
-            posting_date, amount, fiscal_year, description, type, 
-            org1, org2, org3,
-            cat1, cat2, cat3,
-            fund1, fund2,
-            vendor_id, account_number
-          FROM transaction
-          WHERE fiscal_year = 2015
-          AND batch_id IN (
-            SELECT id
-            FROM batch
-            WHERE entity_id = 207
-            AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))")) %>% 
-  left_join(table_transaction_group, by = c("org1" = "id")) %>% 
-    select(-org1) %>% rename(org1 = name) %>% 
-  left_join(table_transaction_group, by = c("org2" = "id")) %>% 
-    select(-org2) %>% rename(org2 = name) %>% 
-  left_join(table_transaction_group, by = c("org3" = "id")) %>% 
-    select(-org3) %>% rename(org3 = name) %>% 
-  left_join(table_transaction_group, by = c("cat1" = "id")) %>% 
-    select(-cat1) %>% rename(cat1 = name) %>% 
-  left_join(table_transaction_group, by = c("cat2" = "id")) %>% 
-    select(-cat2) %>% rename(cat2 = name) %>% 
-  left_join(table_transaction_group, by = c("cat3" = "id")) %>% 
-    select(-cat3) %>% rename(cat3 = name) %>% 
-  left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
-    select(-fund1) %>% rename(fund1 = name) %>% 
-  left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
-    select(-fund2) %>% rename(fund2 = name)
-
-dsd_2015_distinct <- 
-  list(
-    org1 = 
-      dsd_2015 %>% 
-      distinct(org1) %>% 
-      arrange(org1),
-
-    org2 = 
-      dsd_2015 %>% 
-      distinct(org2) %>% 
-      arrange(org2),
-    
-    org3 = 
-      dsd_2015 %>% 
-      distinct(org3) %>% 
-      arrange(org3),
-    
-    cat1 = 
-      dsd_2015 %>% 
-      distinct(cat1) %>% 
-      arrange(cat1),
-    
-    cat2 = 
-      dsd_2015 %>% 
-      distinct(cat2) %>% 
-      arrange(cat2),
-    
-    cat3 = 
-      dsd_2015 %>% 
-      distinct(cat3) %>% 
-      arrange(cat3),
-    
-    fund1 =
-      dsd_2015 %>% 
-      distinct(fund1) %>% 
-      arrange(fund1),
-    
-    fund2 = 
-      dsd_2015 %>% 
-      distinct(fund2) %>% 
-      arrange(fund2),
-    
-    ucoa =
-      dsd_2015 %>% 
-      distinct(account_number) %>% 
-      arrange(account_number))
-
-dsd_2014_32 <- 
-  dsd_2014 %>% 
-  filter(!is.na(account_number), 
-         account_number %>% str_detect("^32-"))
-
-dsd_2014_49 <- 
-  dsd_2014 %>% 
-  filter(!is.na(account_number), 
-         account_number %>% str_detect("^49-"))
-
-dsd_2015_32 <- 
-  dsd_2015 %>% 
-  filter(!is.na(account_number), 
-         account_number %>% str_detect("^32-"))
-
-dsd_2015_49 <- 
-  dsd_2015 %>% 
-  filter(!is.na(account_number), 
-         account_number %>% str_detect("^49-"))
 ```
 
 # Close
