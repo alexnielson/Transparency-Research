@@ -1,0 +1,407 @@
+---
+title: "AISU - Where Did the Money Go?"
+author: "Michael Jensen"
+date: "July 2019"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+  html_notebook:
+    toc: yes
+---
+***
+# Background
+
+The board of directors of the American International School of Utah (AISU), a charter school, voted that the school close no later than August 15, 2019 (["American International School of Utah directors vote to close school"](https://www.ksl.com/article/46548603/american-international-school-of-utah-directors-vote-to-close-school)). Auditor John Dougall was appointed interim director of the charter school (["State auditor named interim director of shuttered Utah charter school"](https://www.ksl.com/article/46595459/state-auditor-named-interim-director-of-shuttered-utah-charter-school)) and directed several members of his staff to investigate AISU's financial records.
+
+```{r, echo=FALSE}
+# Set up and query AISU's Transparency data:
+library(knitr)
+library(odbc)
+library(scales)
+library(tidyverse)
+
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+table_tg <- dbGetQuery(odbc_aws, "SELECT id, name FROM transaction_group")
+aisu_vendors  <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM vendor WHERE entity_id = 999")
+
+aisu_t_data <- 
+  list(
+    summary_table =
+      dbGetQuery(
+        odbc_aws, 
+        "SELECT trx_type, fiscal_year, total, tg.name
+        FROM summary
+        JOIN transaction_group AS tg
+        ON summary.trx_group_id = tg.id
+        WHERE entity_id = 999") %>% 
+      arrange(desc(total)),
+    
+    trans_table_exp =
+      dbGetQuery(
+        odbc_aws,
+        "SELECT 
+          fiscal_year, posting_date, amount, description,
+          org1, org2, cat1, cat2, cat3, fund1, vendor_id
+        FROM transaction
+        WHERE batch_id IN (
+          SELECT id
+          FROM batch
+          WHERE entity_id = 999 
+          AND status IN ('PROCESSED', 'DONTDELETE'))
+        AND type = 1") %>% 
+      left_join(table_tg, by = c("org1" = "id")) %>% 
+        select(-org1) %>% rename(org1 = name) %>% 
+      left_join(table_tg, by = c("org2" = "id")) %>% 
+        select(-org2) %>% rename(org2 = name) %>% 
+      left_join(table_tg, by = c("cat1" = "id")) %>% 
+        select(-cat1) %>% rename(cat1 = name) %>% 
+      left_join(table_tg, by = c("cat2" = "id")) %>% 
+        select(-cat2) %>% rename(cat2 = name) %>% 
+      left_join(table_tg, by = c("cat3" = "id")) %>% 
+        select(-cat3) %>% rename(cat3 = name) %>% 
+      left_join(table_tg, by = c("fund1" = "id")) %>% 
+        select(-fund1) %>% rename(fund1 = name) %>% 
+      left_join(aisu_vendors, by = c("vendor_id" = "id")) %>% 
+        rename(vendor_name = name) %>% 
+      arrange(desc(amount)), 
+    
+    trans_table_rev =
+      dbGetQuery(
+        odbc_aws,
+        "SELECT 
+          fiscal_year, posting_date, amount, description,
+          org1, org2, cat1, cat2, cat3, fund1, vendor_id
+        FROM transaction
+        WHERE batch_id IN (
+          SELECT id
+          FROM batch
+          WHERE entity_id = 999 
+          AND status IN ('PROCESSED', 'DONTDELETE'))
+        AND type = 2") %>% 
+      left_join(table_tg, by = c("org1" = "id")) %>% 
+        select(-org1) %>% rename(org1 = name) %>% 
+      left_join(table_tg, by = c("org2" = "id")) %>% 
+        select(-org2) %>% rename(org2 = name) %>% 
+      left_join(table_tg, by = c("cat1" = "id")) %>% 
+        select(-cat1) %>% rename(cat1 = name) %>% 
+      left_join(table_tg, by = c("cat2" = "id")) %>% 
+        select(-cat2) %>% rename(cat2 = name) %>% 
+      left_join(table_tg, by = c("cat3" = "id")) %>% 
+        select(-cat3) %>% rename(cat3 = name) %>% 
+      left_join(table_tg, by = c("fund1" = "id")) %>% 
+        select(-fund1) %>% rename(fund1 = name) %>% 
+      left_join(aisu_vendors, by = c("vendor_id" = "id")) %>% 
+        rename(vendor_name = name) %>% 
+      arrange(desc(amount)), 
+    
+    vendors = 
+      dbGetQuery(
+        odbc_aws,
+        "SELECT id, name
+        FROM vendor
+        WHERE entity_id = 999"),
+    
+    vendor_summary = 
+      dbGetQuery(
+        odbc_aws,
+        "SELECT type, fiscal_year, total, v.name, vendor_id
+        FROM vendor_summary AS vs
+        JOIN vendor AS v
+        ON vs.vendor_id = v.id
+        WHERE vs.entity_id = 999") %>% 
+      arrange(desc(total)))
+
+rm(aisu_vendors)
+```
+
+```{r, eval=FALSE}
+write_csv(aisu_t_data$summary_table,   "aisu_by_year_by_classification.csv")
+write_csv(aisu_t_data$trans_table_exp, "aisu_expenses.csv")
+write_csv(aisu_t_data$trans_table_rev, "aisu_revenues.csv")
+write_csv(aisu_t_data$vendors,         "aisu_vendors.csv")
+write_csv(aisu_t_data$vendor_summary,  "aisu_by_year_by_vendor.csv")
+```
+
+***
+# Who are the top-paid vendors, 2015-2019?
+
+```{r}
+aisu_t_data$vendor_summary %>% 
+  filter(type == 1) %>% 
+  group_by(fiscal_year, name) %>% 
+  summarize(amount = sum(total)) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+## What are the expense transactions associated with the "Not Applicable" and "Not Provided" vendors?
+
+```{r}
+vendor_is_na <- 
+  aisu_t_data[["vendors"]] %>% 
+  mutate(name = str_to_lower(.[["name"]]))
+
+vendor_is_np <- 
+  aisu_t_data[["vendors"]] %>% 
+  mutate(name = str_to_lower(.[["name"]]))
+
+vendor_is_na <- 
+  vendor_is_na[str_detect(vendor_is_na$name, "^not a"),]
+
+vendor_is_np <- 
+  vendor_is_np[str_detect(vendor_is_np$name, "^not p"),]
+```
+
+### FY 2018 "Not Applicable" vendors are tied to the following transactions:
+
+```{r}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2018, vendor_id %in% vendor_is_na$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+### FY 2017 "Not Provided" vendors are tied to the following transactions:
+
+```{r}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2017, vendor_id %in% vendor_is_np$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+### FY 2016 "Not Provided" vendors are tied to the following transactions:
+
+```{r}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2016, vendor_id %in% vendor_is_np$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+### FY 2018 "Not Provided" vendors are tied to the following transactions:
+
+```{r}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2018, vendor_id %in% vendor_is_np$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+### FY 2015 "Not Provided" vendors are tied to the following transactions:
+
+```{r}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2015, vendor_id %in% vendor_is_np$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+## What are the transactions associated with Schoolhouse Galleria?
+
+```{r}
+vendor_is_sg <- 
+  aisu_t_data[["vendors"]] %>% 
+  mutate(name = str_to_lower(.[["name"]]))
+
+vendor_is_sg <- 
+  vendor_is_sg[str_detect(vendor_is_sg$name, "^schoolhouse"),]
+```
+
+2016:
+
+```{r}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2016, vendor_id %in% vendor_is_sg$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+2017:
+
+```{r}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2017, vendor_id %in% vendor_is_sg$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+2015:
+
+```{r}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2015, vendor_id %in% vendor_is_sg$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+2019:
+
+```{r}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2019, vendor_id %in% vendor_is_sg$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+2018:
+
+```{r, warning=FALSE, message=FALSE}
+aisu_t_data$trans_table_exp %>% 
+  filter(fiscal_year == 2018, vendor_id %in% vendor_is_sg$id) %>% 
+  select(posting_date, amount, description, cat1, cat2, cat3) %>% 
+  arrange(desc(amount)) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  head(n = 15) %>% 
+  kable()
+```
+
+All expenses to Schoolhouse Galleria:
+
+```{r}
+sg_payments <- 
+  aisu_t_data[["trans_table_exp"]] %>% 
+  filter(vendor_id %in% vendor_is_sg$id)
+
+sg_payments %>% 
+  arrange(fiscal_year) %>% 
+  kable()
+```
+
+Yearly total expenditures from AISU to Schoolhouse Galleria:
+
+```{r}
+sg_payments %>% 
+  group_by(fiscal_year) %>% 
+  summarize(total_exp = sum(amount)) %>% 
+  mutate(total_exp = dollar(total_exp)) %>% 
+  kable()
+```
+
+***
+# "Schoolhouse" Vendors
+
+## Schoolhouse Galleria, Inc. is another name for Schoolhouse Development, Inc. Are there any other "Schoolhouse" vendors for charter schools?
+
+```{r}
+vendor_contains_schoolhouse <- 
+  dbGetQuery(
+    odbc_aws,
+    "SELECT DISTINCT v.id, v.name AS vendor_name, entity_id, e.name AS lea_name
+    FROM vendor AS v
+    LEFT JOIN entity AS e
+    ON v.entity_id = e.id
+    WHERE (
+      LOWER(v.name) LIKE '%schoolhouse%'  OR
+      LOWER(v.name) LIKE '%school house%' OR
+      LOWER(v.name) LIKE '%galleria%'     OR
+      LOWER(v.name) LIKE '%galeria%')
+    AND (
+      LOWER(v.name) NOT LIKE 'galeria, brooke'  AND
+      LOWER(v.name) NOT LIKE 'galleria floral%' AND
+      LOWER(v.name) NOT LIKE 'cafe galleria%')
+    AND v.entity_id IN (
+      SELECT id
+      FROM entity
+      WHERE govt_lvl = 'K12 Education')")
+
+charter_vendor_contains_schoolhouse <-
+  vendor_contains_schoolhouse[!str_detect(vendor_contains_schoolhouse$lea_name, "School District"),]
+
+charter_vendor_contains_schoolhouse %>% 
+  distinct(vendor_name, lea_name) %>% 
+  select(lea_name, vendor_name) %>% 
+  arrange(lea_name) %>% 
+  kable()
+```
+
+```{r}
+query_vendor_summary <- function(vendor_id) {
+  # Query the vendor summary information for a given vendor, using the vendor ID.
+  #
+  # Arguments:
+  #   vendor_id: The vendor's Transparency ID.
+  #
+  # Value:
+  #   Data frame.
+  
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT 
+            e.name AS lea_name, 
+            v.name AS vendor_name,
+            vs.type AS trxn_type, vs.fiscal_year, vs.total AS amount
+          FROM vendor_summary AS vs
+          LEFT JOIN entity AS e
+          ON vs.entity_id = e.id
+          LEFT JOIN vendor AS v
+          ON vs.vendor_id = v.id
+          WHERE vs.vendor_id = ", vendor_id))
+} 
+
+sg_vendor_summary <- 
+  map(charter_vendor_contains_schoolhouse$id, query_vendor_summary) %>% 
+  bind_rows()
+
+sg_vendor_summary %>%
+  arrange(lea_name, fiscal_year) %>% 
+  mutate(amount = dollar(amount)) %>% 
+  kable()
+```
+
+## What about mention of a "Schoolhouse" vendor in the transaction descriptions for charter schools?
+
+```{r}
+trans_exp_contains_schoolhouse <- 
+  dbGetQuery(
+    odbc_aws,
+    "SELECT DISTINCT description
+    FROM transaction
+    WHERE (
+      LOWER(description) LIKE '%schoolhouse%' OR
+      LOWER(description) LIKE '%school house%')
+    AND batch_id IN (
+      SELECT id
+      FROM batch
+      WHERE entity_id IN (
+        SELECT id
+        FROM entity
+        WHERE govt_lvl = 'K12 Education')
+      AND status IN ('PROCESSED', 'DONTDELETE'))")
+
+trans_exp_contains_schoolhouse %>% kable()
+```
