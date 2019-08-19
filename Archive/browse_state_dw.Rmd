@@ -1,7 +1,6 @@
 ---
 title: "Browse an Entity's StateDW Data"
 author: "Michael Jensen"
-date: "December 2018"
 output: html_notebook
 ---
 # Inputs, Packages, & Data Connections
@@ -24,6 +23,8 @@ sp_help <-
 # Table Query Templates
 
 ## Account_Type Table
+
+* Expenditures is the account type used to describe money out. Expenses is the account type used to describe money out and things like depreciation. Only certain funds use the expense type.
 
 ```{sql, connection=odbc_dw, output.var=account_type_table}
 SELECT *
@@ -55,6 +56,13 @@ FROM StateDW.dbo.Department
 ```
 
 * 090: State Auditor
+
+## Division Table
+
+```{sql, connection=odbc_dw, output.var=division_table}
+SELECT Fiscal_Year, Department, Division, Division_Name
+FROM StateDW.dbo.Division
+```
 
 ## Employee Data Table
 
@@ -91,3 +99,7 @@ rm(list = ls())
 ```
 
 # Workspace
+
+```{r}
+osa_id <- "090"
+```
