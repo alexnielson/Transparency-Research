@@ -438,9 +438,100 @@ entity_transactions %>%
 # Workspace
 
 ```{r}
-t_id <- 207
+t_id <- 63
 
 batch_id <- 54692
+```
+
+
+```{r}
+table_transaction_group <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM transaction_group")
+
+table_vendor <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM vendor WHERE entity_id <> 1")
+
+transactions <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT 
+            posting_date, amount, fiscal_year, description, type, 
+            org1, org2, org3,
+            cat1, cat2, cat3,
+            fund1, fund2,
+            vendor_id, account_number
+          FROM transaction
+          WHERE batch_id IN (
+            SELECT id
+            FROM batch
+            WHERE entity_id = ", t_id, "
+            AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))")) %>% 
+  left_join(table_transaction_group, by = c("org1" = "id")) %>% 
+    select(-org1) %>% rename(org1 = name) %>% 
+  left_join(table_transaction_group, by = c("org2" = "id")) %>% 
+    select(-org2) %>% rename(org2 = name) %>% 
+  left_join(table_transaction_group, by = c("org3" = "id")) %>% 
+    select(-org3) %>% rename(org3 = name) %>% 
+  left_join(table_transaction_group, by = c("cat1" = "id")) %>% 
+    select(-cat1) %>% rename(cat1 = name) %>% 
+  left_join(table_transaction_group, by = c("cat2" = "id")) %>% 
+    select(-cat2) %>% rename(cat2 = name) %>% 
+  left_join(table_transaction_group, by = c("cat3" = "id")) %>% 
+    select(-cat3) %>% rename(cat3 = name) %>% 
+  left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
+    select(-fund1) %>% rename(fund1 = name) %>% 
+  left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
+    select(-fund2) %>% rename(fund2 = name) %>% 
+  left_join(table_vendor, by = c("vendor_id" = "id")) %>% 
+    select(-vendor_id) %>% rename(vendor_name = name)
+
+distinct_transactions <- 
+  list(
+    org1 = 
+      transactions %>% 
+      distinct(org1) %>% 
+      arrange(org1),
+
+    org2 = 
+      transactions %>% 
+      distinct(org2) %>% 
+      arrange(org2),
+    
+    org3 = 
+      transactions %>% 
+      distinct(org3) %>% 
+      arrange(org3),
+    
+    cat1 = 
+      transactions %>% 
+      distinct(cat1) %>% 
+      arrange(cat1),
+    
+    cat2 = 
+      transactions %>% 
+      distinct(cat2) %>% 
+      arrange(cat2),
+    
+    cat3 = 
+      transactions %>% 
+      distinct(cat3) %>% 
+      arrange(cat3),
+    
+    fund1 =
+      transactions %>% 
+      distinct(fund1) %>% 
+      arrange(fund1),
+    
+    fund2 = 
+      transactions %>% 
+      distinct(fund2) %>% 
+      arrange(fund2),
+    
+    ucoa =
+      transactions %>% 
+      distinct(account_number) %>% 
+      arrange(account_number))
 ```
 
 # Close
