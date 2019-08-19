@@ -1,0 +1,51 @@
+---
+title: "OSA Agency Funds - Payee Listed as 'Not Applicable'"
+output: html_notebook
+---
+***
+```{r, echo=FALSE, message=FALSE}
+library(knitr)
+library(lubridate)
+library(odbc)
+library(scales)
+library(tidyverse)
+
+odbc_dw  <- dbConnect(odbc::odbc(), "StateDW", password = "DW1234")
+```
+
+## Unique Line Descriptions for Agency Fund Transactions, for all time:
+
+```{r, echo=FALSE}
+dbGetQuery(
+  odbc_dw,
+  "SELECT DISTINCT
+    Line_Description
+  FROM StateDW.dbo.Accounting_Journal
+  WHERE Department = '090'
+  AND Account_Type = '22' -- Expenditure
+  AND Fund LIKE '8%'
+  ORDER BY Line_Description") %>% 
+  kable()
+```
+
+## FY Period, Amount, and Line Description Agency Fund Transactions:
+
+```{r, echo=FALSE}
+dbGetQuery(
+  odbc_dw,
+  "SELECT
+    Line_Description,
+    Fiscal_Year_Period AS FY_Period,
+    Amount,
+    Tran_ID
+    -- Vendor_Customer,
+    -- Vendor_Customer_Name
+  FROM StateDW.dbo.Accounting_Journal
+  WHERE Department = '090'
+  AND Account_Type = '22' -- Expenditure
+  AND Fund LIKE '8%'
+  ORDER BY Fiscal_Year_Period DESC") %>% 
+  mutate(Amount = dollar(Amount)) %>% 
+  kable()
+```
+
