@@ -1,0 +1,57 @@
+---
+title: "State of Utah Journal Voucher Transactions"
+output: html_notebook
+---
+```{r}
+library(lubridate)
+library(odbc)
+library(scales)
+library(tidyverse)
+
+odbc_dw  <- dbConnect(odbc::odbc(), "StateDW", password = "DW1234")
+odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+```
+
+```{sql, connection=odbc_dw, output.var=department_table}
+SELECT *
+FROM StateDW.dbo.Department
+```
+
+```{sql, connection=odbc_dw, output.var=division_table}
+SELECT Fiscal_Year, Department, Division, Division_Name
+FROM StateDW.dbo.Division
+WHERE Department = "810"
+```
+
+```{r}
+udot <- "810"
+
+division_distinct <- division_table %>% distinct(Division_Name)
+```
+
+```{sql, connection=odbc_dw, output.var=dot_mineral_lease}
+SELECT 
+  Fiscal_Year_Period,
+  Amount,
+  Line_Description,
+  Vendor_Customer,
+  Vendor_Customer_Name,
+  Tran_ID
+FROM StateDW.dbo.Accounting_Journal
+WHERE Department = "810" -- Utah Department of Transportation
+AND Division = "8820" -- DOT Mineral Lease
+AND Fund = "2800" -- (DOT) Transportation Fund Unrestricted
+AND Account_Type = "22" -- Expenditures
+AND (
+  --Fiscal_Year_Period LIKE "2014%" OR
+  --Fiscal_Year_Period LIKE "2015%" OR
+  --Fiscal_Year_Period LIKE "2016%" OR
+  --Fiscal_Year_Period LIKE "2017%" OR
+  Fiscal_Year_Period LIKE "2018%" OR
+  Fiscal_Year_Period LIKE "2019%")
+```
+
+```{sql, connection=odbc_dw, output.var=account_type_table}
+SELECT *
+FROM Account_Type
+```
