@@ -1,0 +1,77 @@
+---
+title: "Entities with American Express as a Vendor"
+author: "Michael Jensen"
+output: html_notebook
+---
+# Program Description
+
+**Purpose**
+
+Identify the governments that have American Express as a vendor. 
+
+Given the nature of the credit card American Express offers governments, meaning that it is considered a personal credit card rather than a government or business card, there may be a higher risk of fraud. Thus, Auditor Dougall believes that there isn't a good reason for a government to use American Express.
+
+**Input(s)**
+
+```{r}
+dsn_aws        <- "transpAWS"
+dsn_salesforce <- "Salesforce"
+```
+
+**Output(s)**
+
+
+
+# Libraries and Data Sources
+
+```{r}
+library(odbc)
+library(tidyverse)
+
+odbc_aws        <- dbConnect(odbc::odbc(), dsn_aws)
+odbc_salesforce <- dbConnect(odbc::odbc(), dsn_salesforce)
+rm(dsn_aws, dsn_salesforce)
+```
+
+# Function Definitions
+
+## Argument Definitions
+
+```{r, eval=FALSE}
+
+```
+
+
+# Execution
+
+```{r}
+amex_is_vendor <- 
+  dbGetQuery(
+    odbc_aws,
+    "SELECT 
+      entity.name AS entity_name,
+      vendor.name AS vendor_name,
+      entity_id,
+      vendor.id AS vendor_id
+    FROM vendor
+    JOIN entity
+    ON vendor.entity_id = entity.id
+    WHERE
+      LOWER(vendor.name) LIKE '%american express%' OR
+      LOWER(vendor.name) LIKE '%amex%'             OR
+      LOWER(vendor.name) LIKE '%am-ex%'")
+
+distinct_vendors <- 
+  amex_is_vendor %>% 
+  distinct(vendor_name)
+
+distinct_entities <- 
+  amex_is_vendor %>% 
+  distinct(entity_name)
+```
+
+# DBMS Disconnection
+
+```{r}
+dbDisconnect()
+```
