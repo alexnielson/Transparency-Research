@@ -51,7 +51,8 @@ SELECT
   Line_Description,
   Vendor_Customer,
   Vendor_Customer_Name,
-  Tran_ID
+  Tran_ID,
+  Line_Description
 FROM StateDW.dbo.Accounting_Journal
 WHERE  LIKE 
 ```
