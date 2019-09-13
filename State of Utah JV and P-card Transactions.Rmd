@@ -1,0 +1,111 @@
+---
+title: "Identify Insufficiently-detailed State of Utah Transactions"
+author: "Michael Jensen"
+output: html_notebook
+---
+# Program Description
+
+**Purpose**
+
+
+
+**Input(s)**
+
+```{r}
+dsn_aws        <- "transpAWS"
+dsn_salesforce <- "Salesforce"
+dsn_statedw    <- "StateDW"
+```
+
+**Output(s)**
+
+
+
+# Libraries and Data Sources
+
+```{r}
+library(odbc)
+library(tidyverse)
+
+odbc_aws        <- dbConnect(odbc::odbc(), dsn_aws)
+odbc_salesforce <- dbConnect(odbc::odbc(), dsn_salesforce)
+odbc_statedw    <- dbConnect(odbc::odbc(), dsn_statedw, password = "DW1234")
+rm(dsn_aws, dsn_salesforce, dsn_statedw)
+```
+
+# Function Definitions
+
+## Argument Definitions
+
+```{r, eval=FALSE}
+
+```
+
+
+# Execution
+
+```{r}
+# Type 22 (expenditures) indicates money spent. Type 24 (expenses) indicates money
+# out or something that has been expensed (e.g., a depreciation expense).
+table_account_type <- 
+  dbGetQuery(odbc_statedw, "SELECT * FROM Account_Type")
+
+table_dpt_and_div <- 
+  dbGetQuery(
+    odbc_statedw,
+    "SELECT DISTINCT
+      Department_Name, Division_Name
+    FROM Department
+    LEFT JOIN Division
+    ON Department.Department = Division.Department")
+```
+
+## Agency Fund - Political Check-off (State Treasurer)
+
+## Agency Fund - UDOT Mineral Lease (Division of Finance)
+
+```{sql, connection=odbc_statedw, output.var=udot_mineral_lease}
+SELECT 
+  Fiscal_Year_Period,
+  Amount,
+  Line_Description,
+  Vendor_Customer,
+  Vendor_Customer_Name,
+  Tran_ID
+FROM StateDW.dbo.Accounting_Journal
+WHERE Department = "810" -- Utah Department of Transportation
+AND Division = "8820"    -- DOT Mineral Lease
+AND Fund = "2800"        -- (DOT) Transportation Fund Unrestricted
+AND Account_Type = "22"  -- Expenditures
+AND (
+  --Fiscal_Year_Period LIKE "2014%" OR
+  --Fiscal_Year_Period LIKE "2015%" OR
+  --Fiscal_Year_Period LIKE "2016%" OR
+  --Fiscal_Year_Period LIKE "2017%" OR
+  Fiscal_Year_Period LIKE "2018%" OR
+  Fiscal_Year_Period LIKE "2019%")
+```
+
+## Agency Fund - Property Tax Valuation (State Auditor)
+
+## P-Card - State Auditor
+
+```{r}
+osa_pcard <- 
+  dbGetQuery(
+    odbc_statedw,
+    "SELECT Activity, Amount, Bank_Account, Check_Number, Commodity_Line_Number,
+    Doc_Unique_ID, Document_ID, Invoice_Line_Number, Invoice_Number,
+      Line_Description
+    FROM Accounting_Journal
+    WHERE Department = 090
+    AND Fiscal_Year = 2020
+    AND Account_Type = 22")
+```
+
+
+# DBMS Disconnection
+
+```{r}
+dbDisconnect()
+```
