@@ -94,13 +94,44 @@ AND (
 osa_pcard <- 
   dbGetQuery(
     odbc_statedw,
-    "SELECT Activity, Amount, Bank_Account, Check_Number, Commodity_Line_Number,
-    Doc_Unique_ID, Document_ID, Invoice_Line_Number, Invoice_Number,
-      Line_Description
+    "SELECT 
+      Amount, Account_Type, Debit_Credit, Fiscal_Year, Fiscal_Period, 
+      Budget_Year_Period, Record_Number, Tran_ID, Ref_Doc_ID, Document_ID,
+      Check_Number, ZDate, Run_Date_Time, Doc_Record_Date, Invoice_Date,
+      Fund, Department, Unit, Division, Object, Revenue_Source, Appropriation,
+      Major_Program, Program, Posting_Code, Vendor_Customer_Indicator,
+      Vendor_Customer, Vendor_Customer_Name, Posting_Pair_Type, 
+      Doc_Function_Code, Document_Type, Accounting_Line_Number, 
+      Commodity_Line_Number, Vendor_Line_Number, Document_Version_Number,
+      Document_Code, Doc_Department, Line_Description
     FROM Accounting_Journal
-    WHERE Department = 090
-    AND Fiscal_Year = 2020
-    AND Account_Type = 22")
+    WHERE Department = '090'
+    AND Fiscal_Year = '2020'
+    AND Account_Type = '22'")
+```
+
+```{r}
+table_object <- 
+  dbGetQuery(
+    odbc_statedw,
+    "SELECT Object_Name
+    FROM Object
+    WHERE Object IN ('6185', '6260')"
+  )
+```
+
+```{r}
+sample_line_descriptions <- 
+  dbGetQuery(
+    odbc_statedw,
+    "SELECT DISTINCT Line_Description
+    FROM Accounting_Journal
+    WHERE Department = '090'
+    AND Fiscal_Year = '2020'
+    AND Account_Type = '22'")
+
+# The line descriptions are not formatted the same, so extracting the vendor 
+# name from this field will require some thought.
 ```
 
 
