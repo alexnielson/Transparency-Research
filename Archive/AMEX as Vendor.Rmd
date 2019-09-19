@@ -102,7 +102,13 @@ distinct_entities <-
 ```
 
 ```{r}
-write_csv()
+file_path <-
+  "S:/Localgov/LG Compliance/Transparency Compliance/"
+
+amex_is_vendor %>% 
+  write_csv(
+    path = paste0(file_path, Sys.Date(), " Vendor is AMEX.csv"),
+      na = "")
 ```
 
 # DBMS Disconnection
