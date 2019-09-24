@@ -1,0 +1,212 @@
+---
+title: "Entities with American Express as a Vendor"
+author: "Michael Jensen"
+output: html_notebook
+---
+# Program Description
+
+**Purpose**
+
+Identify the governments that have American Express as a vendor.
+
+Given the nature of the credit card American Express offers governments, meaning that it is considered a personal credit card rather than a government or business card, there may be a higher risk of fraud. Thus, Auditor Dougall believes that there isn't a good reason for a government to use American Express.
+
+**Input(s)**
+
+```{r}
+dsn_aws        <- "transpAWS"
+dsn_salesforce <- "Salesforce"
+
+# Insert the most recently archived fiscal year:
+most_recent_archived_fy <- 2013
+```
+
+**Output(s)**
+
+
+
+# Libraries and Data Sources
+
+```{r}
+library(odbc)
+library(tidyverse)
+
+odbc_aws        <- dbConnect(odbc::odbc(), dsn_aws)
+odbc_salesforce <- dbConnect(odbc::odbc(), dsn_salesforce)
+rm(dsn_aws, dsn_salesforce)
+```
+
+# Function Definitions
+
+## Argument Definitions
+
+```{r, eval=FALSE}
+  #   t_id (num): The entity's Transparency ID, as queried from Salesforce
+  #     rather than Transparency.
+  #   table_trxn_group (tibble): The Transparent Utah Transaction Group Table.
+```
+
+## query_18_19_amex_trxns()
+
+```{r}
+query_18_19_amex_trxns <- function(t_id, table_trxn_group) {
+  # Query an entity's 2018 and 2019 transactions where the vendor is American
+  # Express.
+  #
+  # Arguments:
+  #   t_id (num): The entity's Transparency ID, as queried from Salesforce
+  #     rather than Transparency.
+  #   table_trxn_group (tibble): The Transparent Utah Transaction Group Table.
+  #
+  # Value:
+  #   Tibble.
+
+  dbGetQuery(
+    odbc_aws,
+    paste("
+      SELECT
+        e.name      AS entity_name,
+        v.entity_id AS entity_id,
+        v.name      AS vendor_name,
+        v.id        AS vendor_id,
+        t.posting_date, t.amount, t.fiscal_year, t.description, t.type, 
+        t.org1, t.org2, t.org3,
+        t.cat1, t.cat2, t.cat3,
+        t.fund1, t.fund2,
+        t.account_number
+      FROM vendor AS v
+      LEFT JOIN entity AS e
+      ON v.entity_id = e.id
+      LEFT JOIN transaction AS t
+      ON v.id = t.vendor_id
+      WHERE (
+        LOWER(v.name) LIKE '%american express%' OR
+        LOWER(v.name) LIKE '%amex%'             OR
+        LOWER(v.name) LIKE '%am-ex%')
+      AND (
+        LOWER(v.name) NOT LIKE 'american express foundation'    AND
+        LOWER(v.name) NOT LIKE '%american expression of dance%' AND
+        LOWER(v.name) NOT LIKE 'alamexo'                        AND
+        LOWER(v.name) NOT LIKE 'amexpo inc'                     AND
+        LOWER(v.name) NOT LIKE 'banamex sa fideicomiso%'        AND
+        LOWER(v.name) NOT LIKE 'dynamex operations west, inc'   AND
+        LOWER(v.name) NOT LIKE 'jamex, inc')
+      AND v.id IN (
+        SELECT vendor_id
+        FROM vendor_summary
+        WHERE fiscal_year > 2013
+        AND type IN (1, 2))
+      AND entity_id = ", t_id, "
+      AND t.fiscal_year IN (2018, 2019)")) %>% 
+  left_join(table_trxn_group, by = c("org1" = "id")) %>% 
+    select(-org1) %>% rename(org1 = name) %>% 
+  left_join(table_trxn_group, by = c("org2" = "id")) %>% 
+    select(-org2) %>% rename(org2 = name) %>% 
+  left_join(table_trxn_group, by = c("org3" = "id")) %>% 
+    select(-org3) %>% rename(org3 = name) %>% 
+  left_join(table_trxn_group, by = c("cat1" = "id")) %>% 
+    select(-cat1) %>% rename(cat1 = name) %>% 
+  left_join(table_trxn_group, by = c("cat2" = "id")) %>% 
+    select(-cat2) %>% rename(cat2 = name) %>% 
+  left_join(table_trxn_group, by = c("cat3" = "id")) %>% 
+    select(-cat3) %>% rename(cat3 = name) %>% 
+  left_join(table_trxn_group, by = c("fund1" = "id")) %>% 
+    select(-fund1) %>% rename(fund1 = name) %>% 
+  left_join(table_trxn_group, by = c("fund2" = "id")) %>% 
+    select(-fund2) %>% rename(fund2 = name) %>% 
+  tibble()
+}
+```
+
+# Execution
+
+All entities with AMEX as a vendor:
+
+```{r}
+vendor <-
+  dbGetQuery(
+    odbc_aws,
+    paste("
+      SELECT
+        entity.name      AS entity_name,
+        vendor.entity_id AS entity_id,
+        vendor.name      AS vendor_name,
+        vendor.id        AS vendor_id
+      FROM vendor
+      LEFT JOIN entity
+      ON vendor.entity_id = entity.id
+      WHERE (
+        LOWER(vendor.name) LIKE '%american express%' OR
+        LOWER(vendor.name) LIKE '%amex%'             OR
+        LOWER(vendor.name) LIKE '%am-ex%')
+      AND (
+        LOWER(vendor.name) NOT LIKE 'american express foundation'    AND
+        LOWER(vendor.name) NOT LIKE '%american expression of dance%' AND
+        LOWER(vendor.name) NOT LIKE 'alamexo'                        AND
+        LOWER(vendor.name) NOT LIKE 'amexpo inc'                     AND
+        LOWER(vendor.name) NOT LIKE 'banamex sa fideicomiso%'        AND
+        LOWER(vendor.name) NOT LIKE 'dynamex operations west, inc'   AND
+        LOWER(vendor.name) NOT LIKE 'jamex, inc')
+      AND vendor.id IN (
+        SELECT vendor_id
+        FROM vendor_summary
+        WHERE fiscal_year > 2013
+        AND type IN (1, 2))"))
+
+vendor_summary <-
+  dbGetQuery(
+    odbc_aws,
+    paste("
+      SELECT vendor_id, type, fiscal_year
+      FROM vendor_summary
+      WHERE fiscal_year > ", most_recent_archived_fy, "
+      AND type IN (1, 2)"))
+
+amex_is_vendor <- 
+  vendor %>%
+  left_join(vendor_summary, by = "vendor_id") %>% 
+  select(entity_name, fiscal_year, vendor_name, type, entity_id, vendor_id) %>% 
+  arrange(entity_name, fiscal_year)
+
+distinct_vendors <-
+  amex_is_vendor %>%
+  distinct(vendor_name)
+
+distinct_entities <-
+  amex_is_vendor %>%
+  distinct(entity_name)
+```
+
+Selected entities:
+
+```{r}
+fy_18_19 <- 
+  amex_is_vendor %>% 
+  filter(fiscal_year %in% c(2018, 2019))
+
+table_trxn_group <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM transaction_group")
+
+trxn_delta  <- query_18_19_amex_trxns(391, table_trxn_group)
+trxn_chills <- query_18_19_amex_trxns(379, table_trxn_group)
+trxn_orem   <- query_18_19_amex_trxns(531, table_trxn_group)
+trxn_cucc   <- query_18_19_amex_trxns(961, table_trxn_group)
+```
+
+## Export
+
+```{r}
+file_path <-
+  "S:/Localgov/LG Compliance/Transparency Compliance/"
+
+amex_is_vendor %>% 
+  write_csv(
+    path = paste0(file_path, Sys.Date(), " Vendor is AMEX.csv"),
+      na = "")
+```
+
+# DBMS Disconnection
+
+```{r}
+dbDisconnect()
+```
