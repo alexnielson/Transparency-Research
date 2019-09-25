@@ -197,7 +197,7 @@ transactions <-
             posting_date, amount, fiscal_year, description, type, 
             org1, org2, org3,
             cat1, cat2, cat3,
-            fund1, fu nd2,
+            fund1, fund2,
             vendor_id, account_number
           FROM transaction
           WHERE batch_id IN (
