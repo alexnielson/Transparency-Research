@@ -12,9 +12,9 @@ output: html_notebook
 **Input(s)**
 
 ```{r}
-dsn_aws        <- "transpAWS"
-dsn_salesforce <- "Salesforce"
-dsn_statedw    <- "StateDW"
+dsn_aws     <- "transpAWS"
+dsn_sf      <- "Salesforce"
+dsn_statedw <- "StateDW"
 ```
 
 **Output(s)**
@@ -28,9 +28,9 @@ library(odbc)
 library(tidyverse)
 
 odbc_aws        <- dbConnect(odbc::odbc(), dsn_aws)
-odbc_salesforce <- dbConnect(odbc::odbc(), dsn_salesforce)
+odbc_salesforce <- dbConnect(odbc::odbc(), dsn_sf)
 odbc_statedw    <- dbConnect(odbc::odbc(), dsn_statedw, password = "DW1234")
-rm(dsn_aws, dsn_salesforce, dsn_statedw)
+rm(dsn_aws, dsn_sf, dsn_statedw)
 ```
 
 # Function Definitions
@@ -134,6 +134,80 @@ sample_line_descriptions <-
 # name from this field will require some thought.
 ```
 
+## P-card - Alpine School District
+
+Auditor Dougall thought that Alpine School District had solved the problem we are attempting to solve with the State of Utah.
+
+```{r}
+t_id <- 259
+
+table_transaction_group <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM transaction_group")
+
+table_vendor <- 
+  dbGetQuery(
+    odbc_aws, 
+    paste("
+      SELECT id, name FROM vendor WHERE entity_id = ", t_id))
+
+alpine_sd_2018_exp <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+          SELECT 
+            posting_date, amount, description, type, 
+            org1, org2, org3,
+            cat1, cat2, cat3,
+            fund1, fund2,
+            vendor_id, account_number
+          FROM transaction
+          WHERE batch_id IN (
+            SELECT id
+            FROM batch
+            WHERE entity_id = ", t_id, "
+            AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))
+          AND fiscal_year = 2018
+          AND type = 1")) %>% 
+  left_join(table_transaction_group, by = c("org1" = "id")) %>% 
+    select(-org1) %>% rename(org1 = name) %>% 
+  left_join(table_transaction_group, by = c("org2" = "id")) %>% 
+    select(-org2) %>% rename(org2 = name) %>% 
+  left_join(table_transaction_group, by = c("org3" = "id")) %>% 
+    select(-org3) %>% rename(org3 = name) %>% 
+  left_join(table_transaction_group, by = c("cat1" = "id")) %>% 
+    select(-cat1) %>% rename(cat1 = name) %>% 
+  left_join(table_transaction_group, by = c("cat2" = "id")) %>% 
+    select(-cat2) %>% rename(cat2 = name) %>% 
+  left_join(table_transaction_group, by = c("cat3" = "id")) %>% 
+    select(-cat3) %>% rename(cat3 = name) %>% 
+  left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
+    select(-fund1) %>% rename(fund1 = name) %>% 
+  left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
+    select(-fund2) %>% rename(fund2 = name) %>% 
+  left_join(table_vendor, by = c("vendor_id" = "id")) %>% 
+    select(-vendor_id) %>% rename(vendor_name = name) %>% 
+  select(type, posting_date, amount, vendor_name, description,
+         org1, org2, org3, cat1, cat2, cat3, fund1, fund2)
+
+distinct_vendors <- 
+  alpine_sd_2018_exp %>% 
+  distinct(vendor_name)
+
+alpine_sd_2018_exp %>% 
+  select(-type) %>% 
+  filter(
+    str_detect(vendor_name, regex("^not", ignore_case = TRUE)) |
+    str_detect(vendor_name, regex("U S Bank", ignore_case = TRUE))) %>% 
+  write_csv(
+    "~/3 Project Support/Transparency-Research/Alpine SD 2018 Expenses - Sample.csv",
+    na = "")
+
+alpine_sd_2018_exp %>% 
+  select(-type) %>% 
+  write_csv(
+    "~/3 Project Support/Transparency-Research/Alpine SD 2018 Expenses.csv",
+    na = "")
+```
 
 # DBMS Disconnection
 
