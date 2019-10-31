@@ -183,46 +183,40 @@ distinct_batch_transactions <-
 Non-archived transactions for an entity:
 
 ```{r}
-table_transaction_group <- 
-  dbGetQuery(odbc_aws, "SELECT id, name FROM transaction_group")
-
-table_vendor <- 
-  dbGetQuery(odbc_aws, "SELECT id, name FROM vendor WHERE entity_id <> 1")
-
 transactions <- 
   dbGetQuery(
     odbc_aws,
     paste("
           SELECT 
-            posting_date, amount, fiscal_year, description, type, 
-            org1, org2, org3,
-            cat1, cat2, cat3,
-            fund1, fund2,
-            vendor_id, account_number
-          FROM transaction
+            posting_date, amount, fiscal_year, description, t.type, 
+            tg1.name AS org1, tg2.name AS org2, tg3.name AS org3,
+            tg4.name AS cat1, tg4.name AS cat2, tg6.name AS cat3,
+            tg7.name AS fund1, tg8.name AS fund2,
+            v.name AS vendor_name, account_number
+          FROM transaction AS t
+          LEFT JOIN transaction_group AS tg1
+            ON t.org1 = tg1.id
+          LEFT JOIN transaction_group AS tg2
+            ON t.org2 = tg2.id
+          LEFT JOIN transaction_group AS tg3
+            ON t.org3 = tg3.id
+          LEFT JOIN transaction_group AS tg4
+            ON t.cat1 = tg4.id
+          LEFT JOIN transaction_group AS tg5
+            ON t.cat2 = tg5.id
+          LEFT JOIN transaction_group AS tg6
+            ON t.cat3 = tg6.id
+          LEFT JOIN transaction_group AS tg7
+            ON t.fund1 = tg7.id
+          LEFT JOIN transaction_group AS tg8
+            ON t.fund2 = tg8.id
+          LEFT JOIN vendor AS v
+            ON t.vendor_id = v.id
           WHERE batch_id IN (
             SELECT id
             FROM batch
             WHERE entity_id = ", t_id, "
-            AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))")) %>% 
-  left_join(table_transaction_group, by = c("org1" = "id")) %>% 
-    select(-org1) %>% rename(org1 = name) %>% 
-  left_join(table_transaction_group, by = c("org2" = "id")) %>% 
-    select(-org2) %>% rename(org2 = name) %>% 
-  left_join(table_transaction_group, by = c("org3" = "id")) %>% 
-    select(-org3) %>% rename(org3 = name) %>% 
-  left_join(table_transaction_group, by = c("cat1" = "id")) %>% 
-    select(-cat1) %>% rename(cat1 = name) %>% 
-  left_join(table_transaction_group, by = c("cat2" = "id")) %>% 
-    select(-cat2) %>% rename(cat2 = name) %>% 
-  left_join(table_transaction_group, by = c("cat3" = "id")) %>% 
-    select(-cat3) %>% rename(cat3 = name) %>% 
-  left_join(table_transaction_group, by = c("fund1" = "id")) %>% 
-    select(-fund1) %>% rename(fund1 = name) %>% 
-  left_join(table_transaction_group, by = c("fund2" = "id")) %>% 
-    select(-fund2) %>% rename(fund2 = name) %>% 
-  left_join(table_vendor, by = c("vendor_id" = "id")) %>% 
-    select(-vendor_id) %>% rename(vendor_name = name)
+            AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))"))
 
 distinct_transactions <- 
   list(
@@ -438,11 +432,10 @@ entity_transactions %>%
 # Workspace
 
 ```{r}
-t_id <- 63
+t_id <- 69
 
 batch_id <- 54692
 ```
-
 
 ```{r}
 table_transaction_group <- 
@@ -533,6 +526,31 @@ distinct_transactions <-
       distinct(account_number) %>% 
       arrange(account_number))
 ```
+
+```{r}
+transactions$fiscal_year <- 
+  transactions$fiscal_year %>% as.integer()
+
+sa <- 
+  transactions %>% 
+  filter(fiscal_year %in% c(2017, 2018),
+         type == 1,
+         str_detect(account_number, regex("^21"))) 
+
+tax <- 
+  transactions %>% 
+  filter(fiscal_year %in% c(2015:2018),
+         type == 1,
+         str_detect(account_number, regex("^26")))
+
+foundation <- 
+  transactions %>% 
+  filter(fiscal_year == 2018,
+         type == 1,
+         str_detect(org2, regex("Education Foundation")))
+```
+
+
 
 # Close
 
