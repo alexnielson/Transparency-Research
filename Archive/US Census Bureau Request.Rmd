@@ -1,212 +1,353 @@
 ---
-title: "U.S. Census Bureau Request for 2016 & 2017 Transparency Data"
+title: "U.S. Census Bureau Request for Transparent Utah Data"
 author: "Michael Jensen"
-date: "February 2019"
 output: html_notebook
 ---
 # Program Description
 
 **Purpose**
 
-Provide 2016 and 2017 Transparency data for counties, cities, towns, and  interlocal, local, and special service districts to the U.S. Census Bureau's  Local Finance Statistics Branch.
+Respond to a request from the Local Finance Statistics Branch of the U.S. Census Bureau for expense and revenue transactions from Transparent Utah for the following local governments: counties, cities and towns, and interlocal, local, and special service districts.
 
 **Inputs**
 
 * The name of the ODBC connection to AWS.
+* The name of the ODBC connection to Salesforce.
+* The two fiscal years to query, as requested by the Census Bureau.
+
+```{r}
+dsn_aws <- "transpAWS"
+dsn_sf  <- "Salesforce"
+
+fy_1 <- 2017
+fy_2 <- 2018
+```
 
 **Outputs**
 
-* One .csv file of 2016 and 2017 Transparency data for each of the following local government groups:
-    + Counties
-    + Cities and towns
-    + Interlocals
-    + Local districts
-    + Special service districts
+* One .csv file per government type containing the following fields from the Transparent Utah Transaction Table, for expense and revenue transactions from active governments:
+  * entity_name
+  * entity_id (i.e., Transparency ID)
+  * fiscal_year
+  * transaction_type
+  * posting_date
+  * amount
+  * description
+  * vendor_id
+  * org1, org2, org3, org4
+  * cat1, cat2, cat3, cat4
+  * fund1, fund2
+  * account_number
+* A .csv file of the Entity Table, containing the following fields for entities that have a `govt_lvl` value of `COUNTY`, `CITY`, `INTERLOCAL`, `LOCAL DISTRICTS`, or `SERVICE DISTRICTS`:
+  * entity_id  (i.e., Transparency ID)
+  * entity_name
+  * govt_lvl
+  * fiscal_period (i.e., the first month of the fiscal year)
+* A .csv file of the Transaction Group Table, containing the following fields:
+  * id
+  * name
+* A .csv file of the Vendor Table, containing the following fields:
+  * vendor_id
+  * vendor_name
+  * entity_id
+
+**Comments**
+
+2019-11-11 Update:
+
+* I considered joining the data from the Transaction Table with the data from the Transaction Group and Vendor tables. Doing so would have allowed me to send the Census Bureau a .csv file that wouldn't require additional joining in order to understand the information. I decided not to do so for the following reasons:
+
+  * The email request I received asked for the same information I sent last year, so changing the format of the data I send the Census Bureau may mean extra work for whoever receives and processes the data.
+  * Merging the data is a simple process. The analysts at the Census Bureau are more than capable of merging the data if they need to do so.
 
 # Libraries and Data Source(s)
 
-```{r}
+```{r, message=FALSE}
 library(odbc)
 library(tidyverse)
 
-odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
+odbc_aws <- dbConnect(odbc::odbc(), dsn_aws)
+odbc_sf  <- dbConnect(odbc::odbc(), dsn_sf)
+rm(dsn_aws, dsn_sf)
 ```
 
 # Function Definitions
 
-## query_entity_transactions_2016_2017()
+## Argument Definitions
 
 ```{r}
-query_entity_transactions_2016_2017 <- function(govt_type) {
-  # Query entity names, IDs, and 2016 and 2017 transactions for entities of the
-  # specified government type.
+  #   active_govts (tibble): The tibble containing the Transparency ID, entity
+  #     name, government level (government type), and beginning month of the 
+  #     entity's fiscal year for every active goverment that is a county, city 
+  #     or town, or interlocal, local, or special service district.
+  #   csv_name (char): The name of the .csv file.
+  #   entity_name (char): The name of the government.
+  #   fy_1 (num): The first fiscal year to query, as requested by the U.S.
+  #     Census Bureau.
+  #   fy_2 (num): The second fiscal year to query, as requested by the U.S.
+  #     Census Bureau.
+  #   govt_lvl (char): The government level to query, capitalized (COUNTY, CITY,
+  #     INTERLOCAL, LOCAL DISTRICT, SERVICE DISTRICT).
+  #   field_name (char): The field to query (e.g., "govt_lvl").
+  #   report_name (tibble): The name of the tibble to export.
+  #   t_id (num): The entity's Transparency ID, as queried from Salesforce
+  #     rather than Transparency.
+```
+
+## `create_govt_lvl_report`
+
+```{r}
+create_govt_lvl_report <- function(active_govts, govt_lvl, fy_1, fy_2) {
+  # Create the government level report requested by the U.S. Census Bureau.
   #
-  # Args:
-  #   govt_type (chr): The government type to query, capitalized and surrounded
-  #     by single quotes (i.e., 'COUNTY', 'CITY', 'INTERLOCAL', 'LOCAL 
-  #     DISTRICTS', or 'SERVICE DISTRICTS').
+  # Arguments:
+  #   active_govts (tibble): The tibble containing the Transparency ID, entity
+  #     name, government level (government type), and beginning month of the 
+  #     entity's fiscal year for every active goverment that is a county, city 
+  #     or town, or interlocal, local, or special service district.
+  #   govt_lvl (char): The government level to query, capitalized (COUNTY, CITY,
+  #     INTERLOCAL, LOCAL DISTRICT, SERVICE DISTRICT).
+  #   fy_1 (num): The first fiscal year to query, as requested by the U.S.
+  #     Census Bureau.
+  #   fy_2 (num): The second fiscal year to query, as requested by the U.S.
+  #     Census Bureau.
   #
-  # Returns:
-  #   A data frame containing 2016 and 2017 data from the Transaction Table,
-  #   joined with the corresponding entity name and ID, for entities of the
-  #   specified government type.
+  # Value:
+  #   Tibble.
+  
+  active_govts %>% 
+    filter(govt_lvl == !!govt_lvl) %>% 
+    .[["t_id"]] %>% 
+    map(query_trxn_table, fy_1, fy_2) %>% 
+    bind_rows() %>% 
+    left_join(active_govts, by = "t_id") %>% 
+    select(
+      entity_name, entity_id = t_id, fiscal_year, transaction_type, posting_date,
+      amount, description, vendor_id, org1, org2, org3, org3, cat1, cat2,
+      cat3, cat4, fund1, fund2, account_number)
+}
+```
+
+## `query_entity_table`
+
+```{r}
+query_entity_table <- function(t_id, field_name) {
+  # Query information from the AWS Entity Table.
+  #
+  # Arguments:
+  #   t_id (num): The entity's Transparency ID, as queried from Salesforce
+  #     rather than Transparency.
+  #   field_name (char): The field to query (e.g., "govt_lvl").
+  #
+  # Value:
+  #   A vector with length = 1 (scalar).
+
+  dbGetQuery(
+    odbc_aws,
+    paste("
+      SELECT ", field_name, " AS field
+      FROM entity
+      WHERE id = ", t_id)) %>% 
+    .[["field"]]
+}
+```
+
+## `query_vendor_table`
+
+```{r}
+query_vendor_table <- function(t_id) {
+  # Query an entity's vendors.
+  #
+  # Arguments:
+  #   t_id (num): The entity's Transparency ID, as queried from Salesforce
+  #     rather than Transparency.
+  # 
+  # Value:
+  #   Tibble.
+  
+  dbGetQuery(
+    odbc_aws,
+    paste("
+      SELECT id AS vendor_id, name AS vendor_name, entity_id 
+      FROM vendor
+      WHERE entity_id = ", t_id)) %>% 
+    as_tibble()
+}
+```
+
+## `query_trxn_table`
+
+```{r}
+query_trxn_table <- function(t_id, fy_1, fy_2) {
+  # Query an entity's expense and revenue transactions for the given fiscal 
+  # years.
+  #
+  # Arguments:
+  #   t_id (num): The entity's Transparency ID, as queried from Salesforce
+  #     rather than Transparency.
+  #   fy_1 (num): The first fiscal year to query, as requested by the U.S.
+  #     Census Bureau.
+  #   fy_2 (num): The second fiscal year to query, as requested by the U.S.
+  #     Census Bureau.
+  #
+  # Value:
+  #   Tibble.
   
   dbGetQuery(
     odbc_aws,
     paste("
           SELECT 
+            fiscal_year,
+            type AS transaction_type,
             posting_date,
             amount,
-            batch_id,
-            fiscal_year,
             description,
-            type AS transaction_type,
-            org1, org2, org3, org4,
+            vendor_id,
+            org1, org2, org3, org4
             cat1, cat2, cat3, cat4,
             fund1, fund2,
-            vendor_id,
             account_number
           FROM transaction
           WHERE batch_id IN (
             SELECT id
             FROM batch
-            WHERE entity_id IN (
-              SELECT id
-              FROM entity
-              WHERE govt_lvl = ", govt_type, "))
-          AND fiscal_year IN (2016, 2017)
-          AND type IN (1, 2, 3)")) %>% 
-    left_join(
-      dbGetQuery(
-        odbc_aws,
-        paste("
-              SELECT 
-                batch.id        AS batch_id,
-                batch.entity_id AS entity_id,
-                entity.name     AS entity_name
-              FROM batch
-              JOIN entity
-              ON batch.entity_id = entity.id
-              WHERE batch.entity_id IN (
-                SELECT id
-                FROM entity
-                WHERE govt_lvl IN (", govt_type, "))")),
-      by = "batch_id") %>% 
-    select(entity_name, entity_id, fiscal_year, transaction_type, 
-           posting_date, amount, description, vendor_id, 
-           org1, org2, org3, org4, cat1, cat2, cat3, cat4, fund1, fund2,
-           account_number)
+            WHERE entity_id = ", t_id, "
+            AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))
+          AND type IN (1, 2)
+          AND fiscal_year IN (", fy_1, ",", fy_2, ")")) %>% 
+    as_tibble() %>% 
+    mutate(t_id = t_id)
+}
+```
+
+## `write_file`
+
+```{r}
+write_file <- function(report_name, csv_name, fy_1, fy_2) {
+  # Export a .csv version of a tibble.
+  #
+  # Arguments:
+  #   report_name (tibble): The name of the tibble to export.
+  #   csv_name (char): The name of the .csv file.
+  #   
+  
+  file_name <- paste0("~/utah_", fy_1, "_", fy_2, "_")
+  
+  write_csv(
+    report_name, 
+    paste0(
+      file_name, csv_name, ".csv"))
 }
 ```
 
 # Execution
 
-## SQL queries
-
-```{sql, connection=odbc_aws}
-SELECT DISTINCT level_key
-FROM government_level
+```{r}
+active_govts <- 
+  dbGetQuery(
+    odbc_sf,
+    "SELECT 
+      a.Transparency_ID__c AS t_id
+    FROM Account AS a
+    LEFT JOIN RecordType AS r
+    ON a.RecordTypeId = r.Id
+    WHERE a.RecordTypeId IN (
+      SELECT Id
+      FROM RecordType
+      WHERE SobjectType = 'Account'
+      AND IsActive = 'TRUE'
+      AND Name IN (
+        'City',
+        'County',
+        'Interlocal',
+        'Local and Special Service District',
+        'Town'))
+    AND a.Name <> 'test city 2'
+    AND Entity_Status__c NOT IN ('Inactive', 'Dissolved')") %>% 
+  as_tibble() %>% 
+  filter(!is.na(t_id)) %>% 
+  mutate(
+    entity_name    = map_chr(t_id, query_entity_table, "name"),
+    govt_lvl       = map_chr(t_id, query_entity_table, "govt_lvl"),
+    fy_begin_month = map_chr(t_id, query_entity_table, "fiscal_period"))
 ```
-
-```{sql, connection=odbc_aws, output.var=entity_information}
-SELECT
-  id            AS entity_id,
-  name          AS entity_name,
-  govt_lvl,
-  fiscal_period AS fy_begin_month
-FROM entity
-WHERE govt_lvl IN (
-  'CITY',
-  'COUNTY',
-  'INTERLOCAL',
-  'LOCAL DISTRICTS',
-  'SERVICE DISTRICTS')
-```
-
-```{sql, connection=odbc_aws, output.var=transaction_group_table}
-SELECT id, name
-FROM transaction_group
-```
-
-```{sql, connection=odbc_aws, output.var=vendor_table}
-SELECT
-  id   AS vendor_id,
-  name AS vendor_name,
-  entity_id
-FROM vendor
-WHERE entity_id IN (
-  SELECT id
-  FROM entity
-  WHERE govt_lvl IN (
-    'CITY',
-    'COUNTY',
-    'INTERLOCAL',
-    'LOCAL DISTRICTS',
-    'SERVICE DISTRICTS'))
-```
-
-## Create reports
 
 ```{r}
-government_types <- 
-  c("'COUNTY'", "'CITY'", "'INTERLOCAL'", "'LOCAL DISTRICTS'", 
-    "'SERVICE DISTRICTS'")
+# I don't know why, but I occasionally get an error message when running the
+# code to create the reports for counties and cities and towns. Running the 
+# code again, however, usually solves the problem.
 
-transaction_data_2016_2017 <- 
-  map(government_types, 
-      query_entity_transactions_2016_2017) 
-  
-names(transaction_data_2016_2017) <- 
-  government_types
-```
+report_counties <- 
+  create_govt_lvl_report(active_govts, "COUNTY", fy_1, fy_2)
 
-## Check report quality
+report_cities_and_towns <- 
+  create_govt_lvl_report(active_govts, "CITY", fy_1, fy_2)
 
-```{r}
-summary(entity_information)
-entity_information %>% distinct(govt_lvl)
-entity_information %>% distinct(fy_begin_month)
+report_interlocals <- 
+  create_govt_lvl_report(active_govts, "INTERLOCAL", fy_1, fy_2)
 
-summary(transaction_group_table)
-summary(vendor_table)
-summary(transaction_data_2016_2017[["'COUNTY'"]])
-summary(transaction_data_2016_2017[["'CITY'"]])
-summary(transaction_data_2016_2017[["'INTERLOCAL'"]])
-summary(transaction_data_2016_2017[["'LOCAL DISTRICTS'"]])
-summary(transaction_data_2016_2017[["'SERVICE DISTRICTS'"]])
+report_local_districts <- 
+  create_govt_lvl_report(active_govts, "LOCAL DISTRICTS", fy_1, fy_2)
+
+report_service_districts <- 
+  create_govt_lvl_report(active_govts, "SERVICE DISTRICTS", fy_1, fy_2)
+
+report_vendors <- 
+  active_govts %>% 
+  .[["t_id"]] %>% 
+  map(query_vendor_table) %>% 
+  bind_rows()
 ```
 
 ## Export
 
 ```{r}
-write_csv(entity_information, 
-          "utah_entity_information.csv")
+active_govts %>% 
+  rename(entity_id = t_id) %>% 
+  write_file("entity_information", fy_1, fy_2)
 
-write_csv(transaction_group_table, 
-          "utah_id_crosswalk_transactions.csv")
+report_counties %>%  
+  write_file("county", fy_1, fy_2)
 
-write_csv(vendor_table, 
-          "utah_id_crosswalk_vendors.csv")
+report_cities_and_towns %>% 
+  write_file("city", fy_1, fy_2)
 
-write_csv(transaction_data_2016_2017[["'COUNTY'"]], 
-          "utah_2016_2017_county.csv")
+report_interlocals %>% 
+  write_file("interlocal", fy_1, fy_2)
 
-transaction_data_2016_2017[["'CITY'"]] %>% 
-  filter(fiscal_year == 2016) %>% 
-  write_csv("utah_2016_city.csv")
+report_local_districts %>%  
+  write_file("local", fy_1, fy_2)
 
-transaction_data_2016_2017[["'CITY'"]] %>% 
-  filter(fiscal_year == 2017) %>% 
-  write_csv("utah_2017_city.csv")
+report_service_districts %>%  
+  write_file("service", fy_1, fy_2)
 
-write_csv(transaction_data_2016_2017[["'INTERLOCAL'"]], 
-          "utah_2016_2017_interlocal.csv")
+report_vendors %>% 
+  write_file("id_crosswalk_vendors", fy_1, fy_2)
 
-write_csv(transaction_data_2016_2017[["'LOCAL DISTRICTS'"]], 
-          "utah_2016_2017_local.csv")
+dbGetQuery(
+  odbc_aws,
+  "SELECT id, name FROM transaction_group") %>% 
+  write_file("id_crosswalk_transactions", fy_1, fy_2)
+```
 
-write_csv(transaction_data_2016_2017[["'SERVICE DISTRICTS'"]], 
-          "utah_2016_2017_service.csv")
+If `report_cities_and_towns` is too large to send via email:
+
+```{r, eval=FALSE}
+report_cities_and_towns %>% 
+  slice(1:2500000) %>% 
+  write_file("city_1", fy_1, fy_2)
+
+report_cities_and_towns %>% 
+  slice(2500001:5000000) %>% 
+  write_file("city_2", fy_1, fy_2)
+
+report_cities_and_towns %>% 
+  slice(5000001:7500000) %>% 
+  write_file("city_3", fy_1, fy_2)
+
+report_cities_and_towns %>% 
+  slice(7500001:nrow(report_cities_and_towns)) %>% 
+  write_file("city_4", fy_1, fy_2)
 ```
 
 # DBMS Disconnection
