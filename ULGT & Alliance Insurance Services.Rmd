@@ -7,7 +7,7 @@ output: html_notebook
 
 **Purpose**
 
-A concerned citizen wants to know why the information Utah Local Governments Trust uploaded to Transparent Utah doesn't contain expenses paid to Alliant Insurance Services.
+A concerned citizen wants to know why the information Utah Local Governments Trust uploaded to Transparent Utah doesn't contain expenses paid to Alliant Insurance Services, Inc.
 
 **Input(s)**
 
@@ -15,9 +15,19 @@ A concerned citizen wants to know why the information Utah Local Governments Tru
 dsn_aws <- "transpAWS"
 ```
 
-**Output(s)**
+**Comments**
 
+2019-11-12 Update:
 
+After I searched the Transparent Utah data for the supposedly missing information, I emailed ULGT to ask about the payment. Jody Pettet, Manager, responded to my email and stated that the payment would not appear in the Transparent Utah data because it was booked to the Balance Sheet under Prepaid Expenses. Each month, then, a journal entry was made to amortize a portion of that prepaid expense. The journal entries are reported to Transparent Utah, but have a vendor of "Not Applicable" because the transaction is a journal entry rather than a cash disbursement.
+
+My conclusions, which I shared with Auditor Dougall, are:
+
+* ULGT complied with Transparent Utah reporting requirements.
+* The concerned citizen is understandably confused as to why the payment is not present in the Transparent Utah data.
+* Transparent Utah is not designed to display the type of information that the concerned citizen wanted to see.
+
+Discussing this problem with coworkers from the Financial Audit staff led to me discovering that, for entities operating on accrual-based accounting, revenues are not the same thing as cash receipts, and expenses are not the same thing as cash disbursements. 
 
 # Libraries and Data Sources
 
@@ -28,15 +38,6 @@ library(tidyverse)
 odbc_aws <- dbConnect(odbc::odbc(), dsn_aws)
 rm(dsn_aws)
 ```
-
-# Function Definitions
-
-## Argument Definitions
-
-```{r, eval=FALSE}
-
-```
-
 
 # Execution
 
@@ -82,6 +83,8 @@ vendors <-
   trxns %>% 
   distinct(vendor_name)
 ```
+
+The concerned citizen is correct—the payments to Alliant Insurance Services are not present in Transparent Utah.
 
 # DBMS Disconnection
 
