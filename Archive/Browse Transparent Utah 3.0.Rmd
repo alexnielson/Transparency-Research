@@ -318,10 +318,10 @@ entity_transactions %>%
   print(units = "auto")
 ```
 
-# Workspace
-
 # Close
 
 ```{r}
 dbDisconnect(odbc_aws)
 ```
+
+# Workspace
