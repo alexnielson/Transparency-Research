@@ -207,6 +207,18 @@ table_vendor_summary <-
     "SELECT entity_id, type, fiscal_year, total, vendor_id FROM vendor_summary")
 ```
 
+```{r}
+vendor_summary <- 
+  dbGetQuery(
+    odbc_aws,
+    "SELECT type, fiscal_year, total, name AS vendor_name
+    FROM vendor_summary
+    LEFT JOIN vendor
+      ON vendor_summary.vendor_id = vendor.id
+    WHERE vendor_summary.entity_id = 259")
+```
+
+
 ```{sql, connection=odbc_aws, output.var="table_vendor_summary"}
 SELECT *
 FROM vendor_summary
@@ -325,3 +337,8 @@ dbDisconnect(odbc_aws)
 ```
 
 # Workspace
+
+```{r}
+
+```
+
