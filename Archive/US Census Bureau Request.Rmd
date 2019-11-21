@@ -30,10 +30,8 @@ fy_2 <- 2018
   * entity_id (i.e., Transparency ID)
   * fiscal_year
   * transaction_type
-  * posting_date
   * amount
   * description
-  * vendor_id
   * org1, org2, org3, org4
   * cat1, cat2, cat3, cat4
   * fund1, fund2
@@ -46,16 +44,12 @@ fy_2 <- 2018
 * A .csv file of the Transaction Group Table, containing the following fields:
   * id
   * name
-* A .csv file of the Vendor Table, containing the following fields:
-  * vendor_id
-  * vendor_name
-  * entity_id
 
 **Comments**
 
 2019-11-11 Update:
 
-* I considered joining the data from the Transaction Table with the data from the Transaction Group and Vendor tables. Doing so would have allowed me to send the Census Bureau a .csv file that wouldn't require additional joining in order to understand the information. I decided not to do so for the following reasons:
+* I considered joining the data from the Transaction Table with the data from the Transaction Group table. Doing so would have allowed me to send the Census Bureau a .csv file that wouldn't require additional joining in order to understand the information. I decided not to do so for the following reasons:
 
   * The email request I received asked for the same information I sent last year, so changing the format of the data I send the Census Bureau may mean extra work for whoever receives and processes the data.
   * Merging the data is a simple process. The analysts at the Census Bureau are more than capable of merging the data if they need to do so.
@@ -122,8 +116,8 @@ create_govt_lvl_report <- function(active_govts, govt_lvl, fy_1, fy_2) {
     bind_rows() %>% 
     left_join(active_govts, by = "t_id") %>% 
     select(
-      entity_name, entity_id = t_id, fiscal_year, transaction_type, posting_date,
-      amount, description, vendor_id, org1, org2, org3, org3, cat1, cat2,
+      entity_name, entity_id = t_id, fiscal_year, transaction_type,
+      amount, description, org1, org2, org3, org3, cat1, cat2,
       cat3, cat4, fund1, fund2, account_number)
 }
 ```
@@ -152,29 +146,6 @@ query_entity_table <- function(t_id, field_name) {
 }
 ```
 
-## `query_vendor_table`
-
-```{r}
-query_vendor_table <- function(t_id) {
-  # Query an entity's vendors.
-  #
-  # Arguments:
-  #   t_id (num): The entity's Transparency ID, as queried from Salesforce
-  #     rather than Transparency.
-  # 
-  # Value:
-  #   Tibble.
-  
-  dbGetQuery(
-    odbc_aws,
-    paste("
-      SELECT id AS vendor_id, name AS vendor_name, entity_id 
-      FROM vendor
-      WHERE entity_id = ", t_id)) %>% 
-    as_tibble()
-}
-```
-
 ## `query_trxn_table`
 
 ```{r}
@@ -199,10 +170,8 @@ query_trxn_table <- function(t_id, fy_1, fy_2) {
           SELECT 
             fiscal_year,
             type AS transaction_type,
-            posting_date,
             amount,
             description,
-            vendor_id,
             org1, org2, org3, org4
             cat1, cat2, cat3, cat4,
             fund1, fund2,
@@ -291,12 +260,6 @@ report_local_districts <-
 
 report_service_districts <- 
   create_govt_lvl_report(active_govts, "SERVICE DISTRICTS", fy_1, fy_2)
-
-report_vendors <- 
-  active_govts %>% 
-  .[["t_id"]] %>% 
-  map(query_vendor_table) %>% 
-  bind_rows()
 ```
 
 ## Export
@@ -320,9 +283,6 @@ report_local_districts %>%
 
 report_service_districts %>%  
   write_file("service", fy_1, fy_2)
-
-report_vendors %>% 
-  write_file("id_crosswalk_vendors", fy_1, fy_2)
 
 dbGetQuery(
   odbc_aws,
