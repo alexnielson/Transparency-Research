@@ -1,12 +1,13 @@
 ---
-title: "Browse AWS Transparency Data"
+title: "AWS Boilerplate Code"
 author: "Michael Jensen"
 output: html_notebook
 ---
-# Packages, Data Connection, and Input
+# Libraries and Data Sources
 
-```{r}
+```{r, message=FALSE}
 library(lubridate)
+library(magrittr)
 library(odbc)
 library(scales)
 library(tidyverse)
@@ -14,19 +15,93 @@ library(tidyverse)
 odbc_aws <- dbConnect(odbc::odbc(), "transpAWS")
 ```
 
-# Code Templates
+# Code Templates - Transparent Utah Metadata
 
-## Browse Transparency Data
+## Information Schema
 
-### Entity Table
-
-```{r}
-table_entity <- dbGetQuery(odbc_aws, "SELECT id, name FROM entity")
+```{sql, connection = odbc_aws, output.var = "info_schema_tables"}
+SELECT *
+FROM information_schema.tables
 ```
 
-```{sql, connection=odbc_aws, output.var="table_entity"}
-SELECT id, name
-FROM entity
+```{sql, connection=odbc_aws, output.var=transparency_table_names}
+SELECT TABLE_NAME
+FROM information_schema.tables
+WHERE TABLE_SCHEMA = "transparency"
+```
+
+## Data Size
+
+```{sql, connection = odbc_aws, output.var = "info_schema_size"}
+SELECT table_schema AS 'Database', 
+       table_name AS 'Table',
+       ROUND(((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024), 2) AS 'Size in MB'
+FROM information_schema.tables
+ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC
+```
+
+```{r}
+data_size_in_Mb <- 
+  info_schema_size %>% 
+  summarize(sum(`Size in MB`) %>% round()) %>% 
+  as.numeric()
+
+data_size_in_Gb <- 
+  data_size_in_Mb %>% 
+  divide_by(1000) %>% 
+  round()
+```
+
+## Indexes
+
+Create an index (permission to do so is currently denied):
+
+```{sql, connection = odbc_aws}
+CREATE INDEX transaction_batchid
+ON transaction (batch_id)
+```
+
+View indexed variables:
+
+```{sql, connection = odbc_aws, output.var = "indexed_variables"}
+SELECT DISTINCT table_name, index_name
+FROM information_schema.statistics
+WHERE table_schema = 'transparency'
+```
+
+```{sql, connection = odbc_aws, output.var = "index_batch"}
+SHOW INDEX FROM batch
+```
+
+```{sql, connection = odbc_aws, output.var = "index_entity"}
+SHOW INDEX FROM entity
+```
+
+```{sql, connection = odbc_aws, output.var = "index_transaction"}
+SHOW INDEX FROM transaction
+```
+
+## R Object Size
+
+```{r}
+entity_transactions %>% 
+  object.size() %>% 
+  print(units = "auto")
+```
+
+# Code Templates - Transparent Utah Data
+
+## Entity Table
+
+```{r}
+table_entity <- 
+  dbGetQuery(odbc_aws, "SELECT id, name FROM entity")
+
+table_entity <- 
+  dbGetQuery(odbc_aws, paste("
+    SELECT id, name, govt_lvl, fiscal_period, payroll_period
+    FROM entity
+    WHERE id = ", t_id))
 ```
 
 ```{sql, connection=odbc_aws, output.var="entity_table"}
@@ -39,7 +114,25 @@ FROM entity
 WHERE id = ?t_id
 ```
 
-### Batch Table
+```{sql, connection = odbc_aws, output.var = "count_entity"}
+SELECT COUNT(*)
+FROM entity
+```
+
+## Batch Table
+
+```{r}
+table_batch <- 
+  dbGetQuery(
+    odbc_aws,
+    paste("
+      SELECT
+        id, upload_date, processed_date, file_record_count, file_total_amount,
+        begin_txn_date, end_txn_date, status, status_message
+      FROM batch
+      WHERE entity_id = ", t_id, "
+      ORDER BY upload_date DESC"))
+```
 
 ```{sql, connection=odbc_aws, output.var="table_batch"}
 SELECT 
@@ -63,7 +156,15 @@ SELECT DISTINCT status
 FROM batch
 ```
 
-### Transaction Tables
+```{sql, connection = odbc_aws, output.var = "count_batch"}
+SELECT COUNT(*) FROM batch
+```
+
+```{sql, connection = odbc_aws, output.var = "count_deleted_batches"}
+SELECT COUNT(*) FROM batch WHERE status = 'DELETED'
+```
+
+## Transaction Tables
 
 **Remember**
 
@@ -106,7 +207,9 @@ transactions <-
             FROM batch
             WHERE entity_id = ", t_id, "
             AND status IN ('PROCESSED', 'PROCESSING', 'DONTDELETE'))"))
+```
 
+```{r}
 distinct_transactions <- 
   list(
     org1 = 
@@ -155,7 +258,20 @@ distinct_transactions <-
       arrange(account_number))
 ```
 
-### Transaction Group Table
+```{sql, connection = odbc_aws, output.var = "count_transactions"}
+SELECT COUNT(*) FROM transaction
+```
+
+```{sql, connection = odbc_aws, output.var = "count_deleted_transactions"}
+SELECT COUNT(*) 
+FROM transaction 
+WHERE batch_id IN (
+  SELECT id
+  FROM batch
+  WHERE status = 'DELETED')
+```
+
+## Transaction Group Table
 
 ```{r}
 table_transaction_group <-  
@@ -167,7 +283,7 @@ SELECT id, name
 FROM transaction_group
 ```
 
-### Summary Table
+## Summary Table
 
 **Remember**
 
@@ -179,7 +295,7 @@ FROM summary
 WHERE entity_id = ?t_id
 ```
 
-### Vendor Table
+## Vendor Table
 
 **Remember**
 
@@ -198,7 +314,7 @@ FROM vendor
 WHERE entity_id = ?t_id
 ```
 
-### Vendor Summary Table
+## Vendor Summary Table
 
 ```{r}
 table_vendor_summary <- 
@@ -218,116 +334,10 @@ vendor_summary <-
     WHERE vendor_summary.entity_id = 259")
 ```
 
-
 ```{sql, connection=odbc_aws, output.var="table_vendor_summary"}
 SELECT *
 FROM vendor_summary
 WHERE entity_id = ?t_id
-```
-
-## Browse Transparency Metadata
-
-### Table Row Counts
-
-```{sql, connection = odbc_aws, output.var = "count_batch"}
-SELECT COUNT(*) FROM batch
-```
-
-```{sql, connection = odbc_aws, output.var = "count_entity"}
-SELECT COUNT(*)
-FROM entity
-```
-
-```{sql, connection = odbc_aws, output.var = "count_transactions"}
-SELECT COUNT(*) FROM transaction
-```
-
-```{sql, connection = odbc_aws, output.var = "count_deleted_batches"}
-SELECT COUNT(*) FROM batch WHERE status = 'DELETED'
-```
-
-```{sql, connection = odbc_aws, output.var = "count_deleted_transactions"}
-SELECT COUNT(*) 
-FROM transaction 
-WHERE batch_id IN (
-  SELECT id
-  FROM batch
-  WHERE status = 'DELETED')
-```
-
-```{r}
-count_batch                <- as.numeric(count_batch$`COUNT(*)`)
-count_entity               <- as.numeric(count_entity$`COUNT(*)`)
-count_transactions         <- as.numeric(count_transactions$`COUNT(*)`)
-count_deleted_batches      <- as.numeric(count_deleted_batches$`COUNT(*)`)
-count_deleted_transactions <-
-  as.numeric(count_deleted_transactions$`COUNT(*)`)
-```
-
-### Information Schema Tables
-
-### Table Names and Information
-
-```{sql, connection = odbc_aws, output.var = "info_schema_tables"}
-SELECT *
-FROM information_schema.tables
-```
-
-```{sql, connection=odbc_aws, output.var=transparency_table_names}
-SELECT TABLE_NAME
-FROM information_schema.tables
-WHERE TABLE_SCHEMA = "transparency"
-```
-
-### Data Size
-
-```{sql, connection = odbc_aws, output.var = "info_schema_size"}
-SELECT table_schema AS 'Database', 
-       table_name AS 'Table',
-       ROUND(((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024), 2) AS 'Size in MB'
-FROM information_schema.tables
-ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC
-```
-
-```{r}
-data_size_in_Mb <- round(sum(info_schema_size$`Size in MB`))
-```
-
-### Indexes
-
-Create an index (permission to do so is currently denied):
-
-```{sql, connection = odbc_aws}
-CREATE INDEX transaction_batchid
-ON transaction (batch_id)
-```
-
-View indexed variables:
-
-```{sql, connection = odbc_aws, output.var = "indexed_variables"}
-SELECT DISTINCT table_name, index_name
-FROM information_schema.statistics
-WHERE table_schema = 'transparency'
-```
-
-```{sql, connection = odbc_aws, output.var = "index_batch"}
-SHOW INDEX FROM batch
-```
-
-```{sql, connection = odbc_aws, output.var = "index_entity"}
-SHOW INDEX FROM entity
-```
-
-```{sql, connection = odbc_aws, output.var = "index_transaction"}
-SHOW INDEX FROM transaction
-```
-
-### R Object Size
-
-```{r}
-entity_transactions %>% 
-  object.size() %>% 
-  print(units = "auto")
 ```
 
 # Close
@@ -339,6 +349,9 @@ dbDisconnect(odbc_aws)
 # Workspace
 
 ```{r}
-
+t_id <- 207
 ```
 
+```{r}
+
+```
