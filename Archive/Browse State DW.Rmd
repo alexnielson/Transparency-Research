@@ -89,8 +89,13 @@ FROM StateDW.dbo.Fund
 
 ## Vendor_Customer Table
 
+### Fields
+
+* Vendor_Customer: The vendor/customer ID
+  * This corresponds to the FINET code we use in Salesforce.
+
 ```{sql, connection=odbc_dw, output.var=vendor_customer_table}
-SELECT 
+SELECT
   Vendor_Customer,
   Legal_Name, 
   Alias_Name,
