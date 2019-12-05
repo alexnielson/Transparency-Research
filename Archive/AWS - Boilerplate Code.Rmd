@@ -173,7 +173,7 @@ transaction table. The remaining years are stored in separate tables (e.g.,
 transaction_2009).
 
 ```{r}
-transactions <- 
+trxns <- 
   dbGetQuery(
     odbc_aws,
     paste("
