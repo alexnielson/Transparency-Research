@@ -47,6 +47,8 @@ fy_2 <- 2018
 
 **Comments**
 
+The U.S. Census Bureau is requesting data for what they call a Survey Year. A Survey Year is not the same thing as a Calendar Year or Fiscal Year, which is why what they do with the data we give them may appear confusing. To understand what information they want, search for the Bureau's Form F-28.
+
 2019-11-11 Update:
 
 * I considered joining the data from the Transaction Table with the data from the Transaction Group table. Doing so would have allowed me to send the Census Bureau a .csv file that wouldn't require additional joining in order to understand the information. I decided not to do so for the following reasons:
