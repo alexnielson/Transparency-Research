@@ -1,5 +1,5 @@
 ---
-title: "AWS Boilerplate Code"
+title: "AWS - Boilerplate Code"
 author: "Michael Jensen"
 output: html_notebook
 ---
